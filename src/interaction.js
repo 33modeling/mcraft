@@ -12,6 +12,11 @@ import { AIR, WATER, isSolid } from './blocks.js';
 
 const HALF = PLAYER_WIDTH / 2;
 
+// Reused across frames to avoid per-frame allocations in the hot targeting path.
+// Safe because raycastVoxel consumes them synchronously and never retains them.
+const _rayOrigin = new THREE.Vector3();
+const _rayDir = new THREE.Vector3();
+
 // Cast a ray from `origin` along `dir` (normalized) up to REACH blocks.
 // Returns { block:{x,y,z}, place:{x,y,z}, normal:{x,y,z} } or null.
 // `block` is the hit voxel; `place` is the empty voxel just before it.
@@ -104,10 +109,9 @@ function intersectsPlayer(player, bx, by, bz) {
 
 // Camera-forward ray used for both targeting and interaction.
 function cameraRay(camera) {
-  const origin = new THREE.Vector3();
-  camera.getWorldPosition(origin);
-  const dir = new THREE.Vector3(0, 0, -1).applyQuaternion(camera.quaternion).normalize();
-  return { origin, dir };
+  camera.getWorldPosition(_rayOrigin);
+  _rayDir.set(0, 0, -1).applyQuaternion(camera.quaternion).normalize();
+  return { origin: _rayOrigin, dir: _rayDir };
 }
 
 export function getTarget(world, camera) {

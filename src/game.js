@@ -438,6 +438,7 @@ export class Game {
     this._vmMesh.frustumCulled = false;
     this._vmMesh.renderOrder = 999;
     this._vmBlock = -1; // force first UV build
+    this._vmOffset = new THREE.Vector3();
     this.scene.add(this._vmMesh);
   }
 
@@ -459,8 +460,8 @@ export class Game {
       }
       uvAttr.needsUpdate = true;
     }
-    const offset = new THREE.Vector3(0.42, -0.36, -0.62).applyQuaternion(this.camera.quaternion);
-    this._vmMesh.position.copy(this.camera.position).add(offset);
+    this._vmOffset.set(0.42, -0.36, -0.62).applyQuaternion(this.camera.quaternion);
+    this._vmMesh.position.copy(this.camera.position).add(this._vmOffset);
     this._vmMesh.quaternion.copy(this.camera.quaternion);
     this._vmMesh.rotateY(Math.PI / 6);
     this._vmMesh.rotateX(-Math.PI / 12);

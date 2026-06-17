@@ -70,6 +70,8 @@ class Mob {
     this.vx = 0;
     this.vy = 0;
     this.vz = 0;
+    this.kbx = 0; // decaying knockback, added on top of AI velocity
+    this.kbz = 0;
     this.yaw = Math.random() * Math.PI * 2;
     this.onGround = false;
     this.height = t.height;
@@ -84,6 +86,16 @@ class Mob {
     const model = buildModel(t);
     this.group = model.group;
     this.legs = model.legs;
+  }
+
+  // Free the per-mob GPU buffers (each mob owns its own geometries/materials).
+  dispose() {
+    this.group.traverse((o) => {
+      if (o.isMesh) {
+        o.geometry.dispose();
+        o.material.dispose();
+      }
+    });
   }
 
   _wander(dt) {
@@ -149,8 +161,11 @@ class Mob {
     this.vy -= 26 * dt;
     if (this.vy < -28) this.vy = -28;
 
-    this._tryHoriz(world, 'x', this.vx * dt);
-    this._tryHoriz(world, 'z', this.vz * dt);
+    this._tryHoriz(world, 'x', (this.vx + this.kbx) * dt);
+    this._tryHoriz(world, 'z', (this.vz + this.kbz) * dt);
+    const kd = Math.max(0, 1 - dt * 6); // knockback decay
+    this.kbx *= kd;
+    this.kbz *= kd;
 
     let ny = this.y + this.vy * dt;
     this.onGround = false;
@@ -174,13 +189,21 @@ class Mob {
   _tryHoriz(world, axis, d) {
     if (d === 0) return;
     const s = Math.sign(d);
-    const bx = Math.floor(axis === 'x' ? this.x + s * 0.35 : this.x);
-    const bz = Math.floor(axis === 'z' ? this.z + s * 0.35 : this.z);
-    const feet = isSolid(world.getBlock(bx, Math.floor(this.y + 0.2), bz));
-    const chest = isSolid(world.getBlock(bx, Math.floor(this.y + 1.0), bz));
+    const r = 0.35; // hitbox half-extent
+    // Sample both perpendicular edges so off-centre walls are detected too.
+    const solidAt = (yOff) => {
+      for (const o of [-r, r]) {
+        const bx = Math.floor(axis === 'x' ? this.x + s * r : this.x + o);
+        const bz = Math.floor(axis === 'z' ? this.z + s * r : this.z + o);
+        if (isSolid(world.getBlock(bx, Math.floor(this.y + yOff), bz))) return true;
+      }
+      return false;
+    };
+    const feet = solidAt(0.2);
+    const chest = solidAt(1.0);
     if (feet || chest) {
       // Hop over a one-block obstacle if grounded and there is headroom.
-      const clearAbove = !isSolid(world.getBlock(bx, Math.floor(this.y + this.height + 0.2), bz));
+      const clearAbove = !solidAt(this.height + 0.2);
       if (this.onGround && !chest && clearAbove) this.vy = 7.5;
       return;
     }
@@ -209,7 +232,10 @@ export class MobManager {
   }
 
   clear() {
-    for (const m of this.list) this.scene.remove(m.group);
+    for (const m of this.list) {
+      this.scene.remove(m.group);
+      m.dispose();
+    }
     this.list.length = 0;
   }
 
@@ -258,6 +284,7 @@ export class MobManager {
       const far = Math.hypot(m.x - player.position.x, m.z - player.position.z) > 72;
       if (m.health <= 0 || m.y < -20 || far) {
         this.scene.remove(m.group);
+        m.dispose();
         this.list.splice(i, 1);
       }
     }
@@ -285,8 +312,8 @@ export class MobManager {
     if (!best) return false;
     best.health -= damage;
     const kd = Math.hypot(best.x - origin.x, best.z - origin.z) || 1;
-    best.vx += ((best.x - origin.x) / kd) * 4;
-    best.vz += ((best.z - origin.z) / kd) * 4;
+    best.kbx = ((best.x - origin.x) / kd) * 8;
+    best.kbz = ((best.z - origin.z) / kd) * 8;
     best.vy = 4;
     return true;
   }
