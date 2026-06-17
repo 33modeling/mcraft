@@ -22,6 +22,7 @@ export const BRICK = 16;
 export const SNOW = 17;
 export const GLOWSTONE = 18;
 export const TORCH = 19;
+export const CACTUS = 20;
 
 // `solid`: participates in collision and stops the player.
 // `opaque`: fully hides the neighbouring face behind it (face culling).
@@ -61,6 +62,7 @@ export const BLOCKS = {
   [SNOW]: block('Snow', { all: 'snow' }),
   [GLOWSTONE]: block('Glowstone', { all: 'glowstone' }, { emission: 15 }),
   [TORCH]: block('Torch', { all: 'torch' }, { emission: 14 }),
+  [CACTUS]: block('Cactus', { top: 'cactus_top', bottom: 'cactus_top', side: 'cactus_side' }),
 };
 
 // Resolve the texture name for a given block id and face direction.
@@ -108,6 +110,7 @@ export const HARDNESS = {
   [DIAMOND_ORE]: 2.9,
   [GLOWSTONE]: 0.5,
   [TORCH]: 0.2,
+  [CACTUS]: 0.5,
   [WATER]: Infinity,
   [BEDROCK]: Infinity,
 };
@@ -148,6 +151,7 @@ export const INVENTORY = [
   GLASS,
   BRICK,
   SNOW,
+  CACTUS,
   TORCH,
   GLOWSTONE,
   WATER,

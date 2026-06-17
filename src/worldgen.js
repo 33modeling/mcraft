@@ -15,13 +15,29 @@ import {
   SNOW,
   OAK_LOG,
   OAK_LEAVES,
+  CACTUS,
   COAL_ORE,
   IRON_ORE,
   GOLD_ORE,
   DIAMOND_ORE,
 } from './blocks.js';
 
-const TREE_CELL = 5; // trees are sampled one-per-cell on a 5x5 grid
+const TREE_CELL = 5; // trees/cacti are sampled one-per-cell on a 5x5 grid
+
+export const PLAINS = 0;
+export const FOREST = 1;
+export const DESERT = 2;
+export const SNOWY = 3;
+
+// Biome from temperature + humidity noise. Pure function of (wx, wz).
+export function biomeAt(noise, wx, wz) {
+  const temp = noise.fbm2D((wx + 5000) / 420, (wz + 5000) / 420, 3);
+  const humid = noise.fbm2D((wx - 7000) / 420, (wz - 7000) / 420, 3);
+  if (temp > 0.33 && humid < 0.0) return DESERT;
+  if (temp < -0.33) return SNOWY;
+  if (humid > 0.18) return FOREST;
+  return PLAINS;
+}
 
 // Surface description at a world column. Pure function of (wx, wz).
 export function surfaceInfo(noise, wx, wz) {
@@ -34,12 +50,21 @@ export function surfaceInfo(noise, wx, wz) {
   if (h < 4) h = 4;
   if (h > WORLD_HEIGHT - 10) h = WORLD_HEIGHT - 10;
 
+  const biome = biomeAt(noise, wx, wz);
   let top;
-  if (h <= SEA_LEVEL + 1) top = SAND;
-  else if (h >= 92) top = SNOW;
+  if (h <= SEA_LEVEL + 1) top = SAND; // beaches / lake beds
+  else if (h >= 92 || biome === SNOWY) top = SNOW; // peaks and cold biomes
+  else if (biome === DESERT) top = SAND;
   else top = GRASS;
 
-  return { height: h, top };
+  return { height: h, top, biome };
+}
+
+// Sparse winding caves: carve where two 3D noise fields are both near zero.
+function isCave(noise, wx, wy, wz) {
+  const n1 = noise.perlin3D(wx * 0.045, wy * 0.07, wz * 0.045);
+  const n2 = noise.perlin3D(wx * 0.045 + 120, wy * 0.07 + 120, wz * 0.045 + 120);
+  return Math.abs(n1) < 0.066 && Math.abs(n2) < 0.066;
 }
 
 function oreAt(wx, y, wz, height) {
@@ -89,6 +114,13 @@ function stampTree(chunk, wx, baseY, wz) {
   }
 }
 
+function stampCactus(chunk, wx, baseY, wz) {
+  const h = 1 + Math.floor(hash3(wx, 5, wz, WORLD_SEED + 71) * 3); // 1..3 tall
+  for (let i = 1; i <= h; i++) {
+    setLocal(chunk, wx, baseY + i, wz, CACTUS, false);
+  }
+}
+
 export function generateChunk(world, chunk, noise) {
   const baseX = chunk.cx * CHUNK_SIZE;
   const baseZ = chunk.cz * CHUNK_SIZE;
@@ -112,7 +144,8 @@ export function generateChunk(world, chunk, noise) {
         } else if (y >= h - 3) {
           id = info.top === SAND ? SAND : DIRT;
         } else {
-          id = oreAt(wx, y, wz, h) || STONE;
+          // Deep stone band: carve caves, otherwise stone (with ore veins).
+          id = isCave(noise, wx, y, wz) ? AIR : oreAt(wx, y, wz, h) || STONE;
         }
         chunk.set(lx, y, lz, id);
       }
@@ -133,15 +166,23 @@ export function generateChunk(world, chunk, noise) {
 
   for (let gx = gx0; gx <= gx1; gx++) {
     for (let gz = gz0; gz <= gz1; gz++) {
-      if (hash3(gx, 3, gz, WORLD_SEED + 13) >= 0.42) continue; // not every cell has a tree
+      const dens = hash3(gx, 3, gz, WORLD_SEED + 13);
       const jx = Math.floor(hash3(gx, 1, gz, WORLD_SEED + 11) * TREE_CELL);
       const jz = Math.floor(hash3(gx, 2, gz, WORLD_SEED + 12) * TREE_CELL);
       const wx = gx * TREE_CELL + jx;
       const wz = gz * TREE_CELL + jz;
 
       const info = surfaceInfo(noise, wx, wz);
-      if (info.top !== GRASS || info.height <= SEA_LEVEL) continue;
-      stampTree(chunk, wx, info.height, wz);
+      if (info.height <= SEA_LEVEL) continue;
+
+      if (info.biome === DESERT) {
+        // Cacti grow on sand, fairly sparsely.
+        if (info.top === SAND && dens < 0.16) stampCactus(chunk, wx, info.height, wz);
+      } else if (info.top === GRASS || info.top === SNOW) {
+        // Forests are dense; plains/snowy are sparse.
+        const threshold = info.biome === FOREST ? 0.55 : info.biome === SNOWY ? 0.18 : 0.13;
+        if (dens < threshold) stampTree(chunk, wx, info.height, wz);
+      }
     }
   }
 

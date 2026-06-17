@@ -12,6 +12,8 @@ whole thing runs from any static file server.
 - **Infinite, procedurally generated voxel world** — chunked terrain with hills,
   beaches, oceans, ore veins, bedrock and seamless trees, driven by seeded
   Perlin/fBm noise.
+- **Biomes & caves** — plains, forest, desert (with cacti) and snowy biomes from
+  temperature/humidity noise, plus winding 3D-noise caves to mine through.
 - **Chunk streaming** around the player with face-culled, ambient-occlusion-shaded
   meshes (separate opaque and transparent passes for glass and water).
 - **Dynamic lighting** — sky-light and block-light propagation (BFS) baked into

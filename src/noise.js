@@ -52,6 +52,48 @@ export class Noise {
     return (h & 1 ? -u : u) + (h & 2 ? -2 * v : 2 * v);
   }
 
+  static grad3(hash, x, y, z) {
+    const h = hash & 15;
+    const u = h < 8 ? x : y;
+    const v = h < 4 ? y : h === 12 || h === 14 ? x : z;
+    return (h & 1 ? -u : u) + (h & 2 ? -v : v);
+  }
+
+  // Improved Perlin noise in 3D. Output roughly in [-1, 1].
+  perlin3D(x, y, z) {
+    const p = this.perm;
+    const X = Math.floor(x) & 255;
+    const Y = Math.floor(y) & 255;
+    const Z = Math.floor(z) & 255;
+    x -= Math.floor(x);
+    y -= Math.floor(y);
+    z -= Math.floor(z);
+    const u = Noise.fade(x);
+    const v = Noise.fade(y);
+    const w = Noise.fade(z);
+
+    const A = p[X] + Y;
+    const AA = p[A] + Z;
+    const AB = p[A + 1] + Z;
+    const B = p[X + 1] + Y;
+    const BA = p[B] + Z;
+    const BB = p[B + 1] + Z;
+
+    return Noise.lerp(
+      Noise.lerp(
+        Noise.lerp(Noise.grad3(p[AA], x, y, z), Noise.grad3(p[BA], x - 1, y, z), u),
+        Noise.lerp(Noise.grad3(p[AB], x, y - 1, z), Noise.grad3(p[BB], x - 1, y - 1, z), u),
+        v,
+      ),
+      Noise.lerp(
+        Noise.lerp(Noise.grad3(p[AA + 1], x, y, z - 1), Noise.grad3(p[BA + 1], x - 1, y, z - 1), u),
+        Noise.lerp(Noise.grad3(p[AB + 1], x, y - 1, z - 1), Noise.grad3(p[BB + 1], x - 1, y - 1, z - 1), u),
+        v,
+      ),
+      w,
+    );
+  }
+
   // Improved Perlin noise in 2D. Output roughly in [-1, 1].
   perlin2D(x, y) {
     const perm = this.perm;

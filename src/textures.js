@@ -271,6 +271,23 @@ const PAINTERS = {
     px(d, 7, 0, 255, 244, 180);
     px(d, 8, 0, 255, 244, 180);
   },
+  cactus_side(d, rand) {
+    speckle(d, rand, [78, 132, 56], 12);
+    // darker vertical ribs on the edges
+    for (let y = 0; y < TILE; y++) {
+      px(d, 0, y, 54, 100, 40);
+      px(d, TILE - 1, y, 54, 100, 40);
+      if (rand() < 0.2) px(d, 1 + Math.floor(rand() * (TILE - 2)), y, 60, 110, 44);
+    }
+  },
+  cactus_top(d, rand) {
+    speckle(d, rand, [86, 142, 60], 10);
+    for (let i = 0; i < 8; i++) {
+      const x = 4 + Math.floor(rand() * 8);
+      const y = 4 + Math.floor(rand() * 8);
+      px(d, x, y, 120, 170, 90);
+    }
+  },
 };
 
 export function buildTextureAtlas() {
