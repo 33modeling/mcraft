@@ -29,9 +29,13 @@ whole thing runs from any static file server.
   swimming/buoyancy in water, and a creative fly mode.
 - **Minecraft-style UI**: hotbar (1–9 / scroll), creative inventory (E),
   inverting crosshair and an F3 debug overlay.
-- **18 block types** with procedural textures: grass, dirt, stone, cobblestone,
+- **Creative & survival modes** (toggle with `G`). Survival adds hearts + hunger,
+  fall/drown/void damage, death & respawn, block drops you collect into an
+  inventory with counts, and simple crafting (logs → planks, sand → glass,
+  coal + planks → torches).
+- **21 block types** with procedural textures: grass, dirt, stone, cobblestone,
   oak log/leaves/planks, sand, glass, water, bedrock, coal/iron/gold/diamond ore,
-  bricks and snow.
+  bricks, snow, glowstone, torch and cactus.
 
 ## Controls
 
@@ -46,6 +50,7 @@ whole thing runs from any static file server.
 | Select block | `1`–`9` or scroll wheel |
 | Creative inventory | `E` |
 | Toggle fly | `F` (then `Space` / `Shift` for up / down) |
+| Survival / Creative | `G` |
 | Debug screen | `F3` |
 | Pause / release mouse | `Esc` |
 

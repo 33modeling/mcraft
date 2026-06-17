@@ -21,11 +21,26 @@ import { updatePhysics } from './physics.js';
 import { getTarget, placeBlock } from './interaction.js';
 import { UI } from './ui.js';
 import { Sky } from './sky.js';
-import { BLOCKS, AIR, WATER, textureForFace, breakTime, isBreakable } from './blocks.js';
+import { DroppedItems } from './items.js';
+import {
+  BLOCKS,
+  AIR,
+  WATER,
+  RECIPES,
+  textureForFace,
+  breakTime,
+  isBreakable,
+  blockDrop,
+} from './blocks.js';
 
 const GEN_PER_FRAME = 6;
 const MESH_PER_FRAME = 3;
 const DAY_LENGTH = 300; // seconds for a full day/night cycle
+
+const MAX_HEALTH = 20;
+const MAX_HUNGER = 20;
+const AIR_MAX = 10; // seconds of breath underwater
+const STARVE_FLOOR = 6; // hunger never drops you below this (no food items yet)
 
 const DAY_SKY = new THREE.Color(0x8fc4ff);
 const NIGHT_SKY = new THREE.Color(0x0a1026);
@@ -50,6 +65,20 @@ export class Game {
     this.mining = { active: false, key: null, progress: 0 };
     this._saveTimer = null;
     this.timeOfDay = 0.3; // 0 = midnight, 0.25 = sunrise, 0.5 = noon, 0.75 = sunset
+
+    // Survival state (inactive in creative mode).
+    this.gameMode = 'creative';
+    this.health = MAX_HEALTH;
+    this.hunger = MAX_HUNGER;
+    this.air = AIR_MAX;
+    this.alive = true;
+    this.inv = {}; // blockId -> count
+    this._peakY = null;
+    this._drownTimer = 0;
+    this._voidTimer = 0;
+    this._hungerTimer = 0;
+    this._regenTimer = 0;
+    this._starveTimer = 0;
 
     this.daylightUniform = { value: 1 };
     this.opaqueMat = new THREE.MeshBasicMaterial({ map: this.atlas.texture, vertexColors: true });
@@ -76,6 +105,9 @@ export class Game {
     this._audioCtx = null;
 
     this.sky = new Sky(this.scene);
+    this.drops = new DroppedItems(this.scene, this.atlas, this.viewMat, this.world);
+    this.ui.onCraft = (i) => this._craft(i);
+    this.ui.setMode(false);
     this._initHighlight();
     this._initCrackOverlay();
     this._initViewModel();
@@ -248,10 +280,149 @@ export class Game {
       this._remeshAround(b);
       this._spawnBreakParticles(b, id);
       this._playSound(0.16, 0.08);
+      const drop = blockDrop(id);
+      if (drop !== AIR) this.drops.spawn(drop, b.x + 0.5, b.y + 0.5, b.z + 0.5);
       this.mining.progress = 0;
       this.mining.key = null;
       this.crackMesh.visible = false;
       this._scheduleSave();
+    }
+  }
+
+  _creativeBreak() {
+    const target = getTarget(this.world, this.camera);
+    if (!target) return;
+    const b = target.block;
+    const id = this.world.getBlock(b.x, b.y, b.z);
+    if (id === AIR || id === WATER) return; // creative can break anything else, incl. bedrock
+    this.world.setBlock(b.x, b.y, b.z, AIR);
+    this._remeshAround(b);
+    this._spawnBreakParticles(b, id);
+    this._playSound(0.16, 0.08);
+    this._scheduleSave();
+  }
+
+  _toggleGameMode() {
+    this.gameMode = this.gameMode === 'survival' ? 'creative' : 'survival';
+    const survival = this.gameMode === 'survival';
+    this.player.canFly = !survival;
+    if (survival) {
+      this.player.flying = false;
+      this.health = MAX_HEALTH;
+      this.hunger = MAX_HUNGER;
+      this.air = AIR_MAX;
+      this.alive = true;
+      this._peakY = null;
+    } else {
+      this.alive = true;
+      const death = document.getElementById('death');
+      if (death) death.classList.add('hidden');
+    }
+    this.ui.setMode(survival);
+  }
+
+  _damage(amount) {
+    if (this.gameMode !== 'survival' || !this.alive) return;
+    this.health -= amount;
+    if (this.health <= 0) {
+      this.health = 0;
+      this._die();
+    }
+  }
+
+  _die() {
+    this.alive = false;
+    this.player.velocity.set(0, 0, 0);
+    this._stopMining();
+    if (document.pointerLockElement) document.exitPointerLock();
+    const death = document.getElementById('death');
+    if (death) death.classList.remove('hidden');
+  }
+
+  _respawn() {
+    const s = this._spawnPos;
+    this.player.position.set(s.x, s.y, s.z);
+    this.player.velocity.set(0, 0, 0);
+    this.health = MAX_HEALTH;
+    this.hunger = MAX_HUNGER;
+    this.air = AIR_MAX;
+    this.alive = true;
+    this._peakY = null;
+    const death = document.getElementById('death');
+    if (death) death.classList.add('hidden');
+  }
+
+  _craft(index) {
+    if (this.gameMode !== 'survival') return;
+    const r = RECIPES[index];
+    if (!r.in.every((x) => (this.inv[x.id] || 0) >= x.n)) return;
+    r.in.forEach((x) => (this.inv[x.id] -= x.n));
+    this.inv[r.out.id] = (this.inv[r.out.id] || 0) + r.out.n;
+    this._playSound(0.1, 0.05);
+    this.ui.refreshCrafting((id) => this.inv[id] || 0);
+  }
+
+  // Survival vitals: fall damage, drowning, void, hunger and regeneration.
+  _updateSurvival(dt, submerged) {
+    if (this.gameMode !== 'survival' || !this.alive) return;
+    const p = this.player.position;
+
+    // Fall damage: track the peak height while airborne.
+    if (!this.player.onGround && !this.player.flying && !this.player.inWater) {
+      this._peakY = this._peakY === null ? p.y : Math.max(this._peakY, p.y);
+    } else {
+      if (this.player.onGround && this._peakY !== null) {
+        const fall = this._peakY - p.y;
+        if (fall > 3.5) this._damage(Math.floor(fall - 3));
+      }
+      this._peakY = null;
+    }
+
+    // Drowning.
+    if (submerged) {
+      this.air -= dt;
+      if (this.air <= 0) {
+        this._drownTimer += dt;
+        if (this._drownTimer >= 1) {
+          this._damage(2);
+          this._drownTimer = 0;
+        }
+      }
+    } else {
+      this.air = AIR_MAX;
+      this._drownTimer = 0;
+    }
+
+    // The void.
+    if (p.y < -10) {
+      this._voidTimer += dt;
+      if (this._voidTimer >= 0.5) {
+        this._damage(3);
+        this._voidTimer = 0;
+      }
+    } else {
+      this._voidTimer = 0;
+    }
+
+    // Hunger drains with activity; gates regen; mild starvation at zero.
+    const moving = Math.abs(this.player.velocity.x) + Math.abs(this.player.velocity.z) > 0.5;
+    this._hungerTimer += dt * (moving ? (this.player.keys.sprint ? 2 : 1) : 0.3);
+    if (this._hungerTimer > 8) {
+      this.hunger = Math.max(0, this.hunger - 1);
+      this._hungerTimer = 0;
+    }
+    if (this.hunger >= 18 && this.health < MAX_HEALTH) {
+      this._regenTimer += dt;
+      if (this._regenTimer > 3) {
+        this.health = Math.min(MAX_HEALTH, this.health + 1);
+        this._regenTimer = 0;
+      }
+    } else if (this.hunger === 0 && this.health > STARVE_FLOOR) {
+      this._starveTimer += dt;
+      if (this._starveTimer > 4) {
+        this.health -= 1;
+        this._starveTimer = 0;
+      }
     }
   }
 
@@ -395,6 +566,7 @@ export class Game {
       }
     }
     this.player.position.set(best.x + 0.5, best.h + 2, best.z + 0.5);
+    this._spawnPos = { x: best.x + 0.5, y: best.h + 2, z: best.z + 0.5 };
   }
 
   _pregenSpawn() {
@@ -420,6 +592,7 @@ export class Game {
     const canvas = this.renderer.domElement;
 
     canvas.addEventListener('click', () => {
+      if (!this.alive) return; // must respawn first
       if (this.inventoryOpen) {
         this._setInventory(false);
         return;
@@ -427,13 +600,25 @@ export class Game {
       if (!this.locked) canvas.requestPointerLock();
     });
 
+    const respawnBtn = document.getElementById('respawn');
+    if (respawnBtn) {
+      respawnBtn.addEventListener('click', (e) => {
+        e.stopPropagation();
+        this._respawn();
+      });
+    }
+
     canvas.addEventListener('mousedown', (e) => {
       if (!this.locked) return;
       if (e.button === 0) {
-        this.mining.active = true; // hold to break
+        if (this.gameMode === 'creative') this._creativeBreak();
+        else this.mining.active = true; // survival: hold to break
       } else if (e.button === 2) {
-        const changed = placeBlock(this.world, this.camera, this.player, this.ui.getSelectedBlock());
+        const sel = this.ui.getSelectedBlock();
+        if (this.gameMode === 'survival' && (this.inv[sel] || 0) <= 0) return; // nothing to place
+        const changed = placeBlock(this.world, this.camera, this.player, sel);
         if (changed) {
+          if (this.gameMode === 'survival') this.inv[sel] = (this.inv[sel] || 0) - 1;
           this._remeshAround(changed);
           this._playSound(0.12, 0.06);
           this._scheduleSave();
@@ -469,6 +654,8 @@ export class Game {
         if (n >= 1 && n <= 9) this.ui.selectSlot(n - 1);
       } else if (e.code === 'KeyE') {
         this._setInventory(!this.inventoryOpen);
+      } else if (e.code === 'KeyG') {
+        this._toggleGameMode();
       } else if (e.code === 'F3') {
         this.debugVisible = !this.debugVisible;
         if (this.debugEl) this.debugEl.classList.toggle('hidden', !this.debugVisible);
@@ -494,6 +681,7 @@ export class Game {
   _setInventory(open) {
     this.inventoryOpen = open;
     this.ui.setInventoryOpen(open);
+    if (open) this.ui.refreshCrafting((id) => this.inv[id] || 0);
     if (open && this.locked) document.exitPointerLock();
     else if (!open && !this.locked) this.renderer.domElement.requestPointerLock();
     this._refreshOverlays();
@@ -631,6 +819,13 @@ export class Game {
     this.waterOverlay.style.display = submerged ? 'block' : 'none';
 
     this._updateDayNight(dt);
+    if (this.locked) this._updateSurvival(dt, submerged);
+    this.drops.update(dt, this.player, (id) => {
+      this.inv[id] = (this.inv[id] || 0) + 1;
+      this._playSound(0.07, 0.04);
+    });
+    this.ui.updateHUD(this.health, this.hunger);
+    this.ui.updateCounts((id) => this.inv[id] || 0);
 
     // FPS, averaged over ~0.5s.
     this._fpsAccum += dt;
@@ -655,6 +850,7 @@ export class Game {
       chunkX: floorDiv(this.player.position.x, CHUNK_SIZE),
       chunkZ: floorDiv(this.player.position.z, CHUNK_SIZE),
       loadedChunks: this.world.chunks.size,
+      gameMode: this.gameMode,
       flying: this.player.flying,
       onGround: this.player.onGround,
       time: this.timeOfDay,

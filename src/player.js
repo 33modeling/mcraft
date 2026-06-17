@@ -17,6 +17,7 @@ export class Player {
     this.pitch = 0; // rotation around X, radians
     this.onGround = false;
     this.flying = false;
+    this.canFly = true; // false in survival mode
 
     this.keys = {
       forward: false,
@@ -83,6 +84,7 @@ export class Player {
   }
 
   toggleFly() {
+    if (!this.canFly) return; // survival mode: no creative flight
     this.flying = !this.flying;
     this.velocity.y = 0;
     if (this._onFlyToggle) this._onFlyToggle(this.flying);

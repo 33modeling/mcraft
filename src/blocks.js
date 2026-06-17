@@ -124,6 +124,27 @@ export function isBreakable(id) {
   return id !== AIR && breakTime(id) !== Infinity;
 }
 
+// What a block yields when mined. AIR means it drops nothing.
+export function blockDrop(id) {
+  switch (id) {
+    case GRASS:
+      return DIRT;
+    case STONE:
+      return COBBLESTONE;
+    case OAK_LEAVES:
+      return AIR; // leaves drop nothing
+    default:
+      return id;
+  }
+}
+
+// Minimal crafting: convert collected blocks into other blocks.
+export const RECIPES = [
+  { in: [{ id: OAK_LOG, n: 1 }], out: { id: OAK_PLANKS, n: 4 }, name: 'Oak Planks' },
+  { in: [{ id: SAND, n: 1 }], out: { id: GLASS, n: 1 }, name: 'Glass' },
+  { in: [{ id: COAL_ORE, n: 1 }, { id: OAK_PLANKS, n: 1 }], out: { id: TORCH, n: 4 }, name: 'Torch' },
+];
+
 export function isOpaque(id) {
   const def = BLOCKS[id];
   return !!(def && def.opaque);
