@@ -33,6 +33,8 @@ whole thing runs from any static file server.
   fall/drown/void damage, death & respawn, block drops you collect into an
   inventory with counts, and simple crafting (logs → planks, sand → glass,
   coal + planks → torches).
+- **Mobs**: wandering pigs and sheep, plus zombies that spawn at night, hunt the
+  player, deal contact damage and burn in daylight. Left-click to fight back.
 - **21 block types** with procedural textures: grass, dirt, stone, cobblestone,
   oak log/leaves/planks, sand, glass, water, bedrock, coal/iron/gold/diamond ore,
   bricks, snow, glowstone, torch and cactus.

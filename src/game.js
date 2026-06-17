@@ -22,6 +22,7 @@ import { getTarget, placeBlock } from './interaction.js';
 import { UI } from './ui.js';
 import { Sky } from './sky.js';
 import { DroppedItems } from './items.js';
+import { MobManager } from './mobs.js';
 import {
   BLOCKS,
   AIR,
@@ -106,6 +107,7 @@ export class Game {
 
     this.sky = new Sky(this.scene);
     this.drops = new DroppedItems(this.scene, this.atlas, this.viewMat, this.world);
+    this.mobs = new MobManager(this.scene, this.world);
     this.ui.onCraft = (i) => this._craft(i);
     this.ui.setMode(false);
     this._initHighlight();
@@ -318,6 +320,7 @@ export class Game {
       const death = document.getElementById('death');
       if (death) death.classList.add('hidden');
     }
+    this.mobs.clear();
     this.ui.setMode(survival);
   }
 
@@ -348,6 +351,7 @@ export class Game {
     this.air = AIR_MAX;
     this.alive = true;
     this._peakY = null;
+    this.mobs.clear();
     const death = document.getElementById('death');
     if (death) death.classList.add('hidden');
   }
@@ -612,6 +616,7 @@ export class Game {
       if (!this.locked) return;
       if (e.button === 0) {
         if (this.gameMode === 'creative') this._creativeBreak();
+        else if (this.mobs.meleeHit(this.camera, 3.4, 5)) this._playSound(0.12, 0.05);
         else this.mining.active = true; // survival: hold to break
       } else if (e.button === 2) {
         const sel = this.ui.getSelectedBlock();
@@ -824,6 +829,12 @@ export class Game {
       this.inv[id] = (this.inv[id] || 0) + 1;
       this._playSound(0.07, 0.04);
     });
+    if (this.gameMode === 'survival' && this.locked && this.alive) {
+      this.mobs.update(dt, this.player, {
+        daylight: this.daylightUniform.value,
+        damagePlayer: (n) => this._damage(n),
+      });
+    }
     this.ui.updateHUD(this.health, this.hunger);
     this.ui.updateCounts((id) => this.inv[id] || 0);
 
@@ -854,6 +865,7 @@ export class Game {
       flying: this.player.flying,
       onGround: this.player.onGround,
       time: this.timeOfDay,
+      mobs: this.mobs.count,
       looking,
     });
 
