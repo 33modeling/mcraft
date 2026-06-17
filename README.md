@@ -14,9 +14,12 @@ whole thing runs from any static file server.
   Perlin/fBm noise.
 - **Chunk streaming** around the player with face-culled, ambient-occlusion-shaded
   meshes (separate opaque and transparent passes for glass and water).
-- **Break & place blocks** with a voxel-DDA raycast and a block highlight box.
-- **Creative-style movement**: walking with gravity + AABB collision, jumping,
-  sprinting, and a fly mode.
+- **Break & place blocks** — hold-to-break mining with per-block hardness and a
+  progressive crack overlay, voxel-DDA raycast targeting and a highlight box.
+- **Persistent edits** — your changes are kept across chunk reloads and saved to
+  `localStorage`, so builds survive when you wander off and come back (or reload).
+- **Movement**: walking with gravity + AABB collision, jumping, sprinting,
+  swimming/buoyancy in water, and a creative fly mode.
 - **Minecraft-style UI**: hotbar (1–9 / scroll), creative inventory (E),
   inverting crosshair and an F3 debug overlay.
 - **18 block types** with procedural textures: grass, dirt, stone, cobblestone,

@@ -36,6 +36,44 @@ export class Chunk {
 export class World {
   constructor() {
     this.chunks = new Map(); // "cx,cz" -> Chunk
+    // Persistent player edits, kept even after a chunk unloads so they survive
+    // regeneration. "cx,cz" -> Map(blockIndex -> blockId).
+    this.edits = new Map();
+    this._dirtyEdits = false;
+  }
+
+  // Re-apply stored player edits over freshly generated terrain.
+  applyEdits(chunk) {
+    const e = this.edits.get(chunkKey(chunk.cx, chunk.cz));
+    if (!e) return;
+    for (const [idx, id] of e) chunk.blocks[idx] = id;
+  }
+
+  _recordEdit(cx, cz, idx, id) {
+    const key = chunkKey(cx, cz);
+    let e = this.edits.get(key);
+    if (!e) {
+      e = new Map();
+      this.edits.set(key, e);
+    }
+    e.set(idx, id);
+    this._dirtyEdits = true;
+  }
+
+  serializeEdits() {
+    const out = [];
+    for (const [key, e] of this.edits) {
+      out.push([key, Array.from(e)]);
+    }
+    return out;
+  }
+
+  loadEdits(data) {
+    if (!Array.isArray(data)) return;
+    this.edits = new Map();
+    for (const [key, entries] of data) {
+      this.edits.set(key, new Map(entries));
+    }
   }
 
   getChunk(cx, cz) {
@@ -85,8 +123,10 @@ export class World {
     if (!chunk) return;
     const lx = mod(wx, CHUNK_SIZE);
     const lz = mod(wz, CHUNK_SIZE);
-    chunk.blocks[blockIndex(lx, wy, lz)] = id;
+    const idx = blockIndex(lx, wy, lz);
+    chunk.blocks[idx] = id;
     chunk.dirty = true;
+    this._recordEdit(cx, cz, idx, id);
 
     // Edge writes change a neighbour's visible border faces too.
     if (lx === 0) this.markDirty(cx - 1, cz);

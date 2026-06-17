@@ -15,12 +15,12 @@ import { Noise } from './noise.js';
 import { World } from './world.js';
 import { generateChunk, surfaceInfo } from './worldgen.js';
 import { buildChunkGeometry } from './mesher.js';
-import { buildTextureAtlas } from './textures.js';
+import { buildTextureAtlas, buildCrackTextures } from './textures.js';
 import { Player } from './player.js';
 import { updatePhysics } from './physics.js';
-import { getTarget, breakBlock, placeBlock } from './interaction.js';
+import { getTarget, placeBlock } from './interaction.js';
 import { UI } from './ui.js';
-import { BLOCKS, WATER, textureForFace } from './blocks.js';
+import { BLOCKS, AIR, WATER, textureForFace, breakTime, isBreakable } from './blocks.js';
 
 const GEN_PER_FRAME = 6;
 const MESH_PER_FRAME = 4;
@@ -40,6 +40,9 @@ export class Game {
     this._initScene();
 
     this.atlas = buildTextureAtlas();
+    this.crackTextures = buildCrackTextures();
+    this.mining = { active: false, key: null, progress: 0 };
+    this._saveTimer = null;
     this.opaqueMat = new THREE.MeshBasicMaterial({ map: this.atlas.texture, vertexColors: true });
     this.transparentMat = new THREE.MeshBasicMaterial({
       map: this.atlas.texture,
@@ -53,6 +56,7 @@ export class Game {
 
     this.noise = new Noise(WORLD_SEED);
     this.world = new World();
+    this._loadWorld();
     this.player = new Player(this.camera);
     this.ui = new UI(this.atlas);
     this.debugEl = document.getElementById('debug');
@@ -61,6 +65,7 @@ export class Game {
     this._audioCtx = null;
 
     this._initHighlight();
+    this._initCrackOverlay();
     this._initViewModel();
     this._initWaterOverlay();
     this._spawnPlayer();
@@ -118,6 +123,99 @@ export class Game {
     );
     this.highlight.visible = false;
     this.scene.add(this.highlight);
+  }
+
+  _initCrackOverlay() {
+    const geo = new THREE.BoxGeometry(1.004, 1.004, 1.004);
+    this.crackMat = new THREE.MeshBasicMaterial({
+      map: this.crackTextures[0],
+      transparent: true,
+      depthWrite: false,
+      polygonOffset: true,
+      polygonOffsetFactor: -1,
+    });
+    this.crackMesh = new THREE.Mesh(geo, this.crackMat);
+    this.crackMesh.visible = false;
+    this.crackMesh.renderOrder = 998;
+    this.scene.add(this.crackMesh);
+  }
+
+  _loadWorld() {
+    try {
+      const raw = localStorage.getItem('mcraft.world.' + WORLD_SEED);
+      if (raw) this.world.loadEdits(JSON.parse(raw));
+    } catch (e) {
+      /* ignore corrupt/over-quota storage */
+    }
+  }
+
+  _saveWorld() {
+    try {
+      localStorage.setItem('mcraft.world.' + WORLD_SEED, JSON.stringify(this.world.serializeEdits()));
+      this.world._dirtyEdits = false;
+    } catch (e) {
+      /* ignore over-quota storage */
+    }
+  }
+
+  _scheduleSave() {
+    if (this._saveTimer) clearTimeout(this._saveTimer);
+    this._saveTimer = setTimeout(() => this._saveWorld(), 700);
+  }
+
+  _stopMining() {
+    this.mining.active = false;
+    this.mining.key = null;
+    this.mining.progress = 0;
+    if (this.crackMesh) this.crackMesh.visible = false;
+  }
+
+  // Hold-to-break: accumulate progress on the targeted block, show the crack
+  // overlay, and break it once enough time has passed for its hardness.
+  _updateMining(dt) {
+    if (!this.mining.active || !this.locked) {
+      if (this.crackMesh.visible) this.crackMesh.visible = false;
+      return;
+    }
+    const hit = this._lookingAt;
+    if (!hit) {
+      this.mining.key = null;
+      this.mining.progress = 0;
+      this.crackMesh.visible = false;
+      return;
+    }
+    const b = hit.block;
+    const id = this.world.getBlock(b.x, b.y, b.z);
+    if (!isBreakable(id)) {
+      this.crackMesh.visible = false;
+      this.mining.progress = 0;
+      this.mining.key = null;
+      return;
+    }
+    const key = b.x + ',' + b.y + ',' + b.z;
+    if (key !== this.mining.key) {
+      this.mining.key = key;
+      this.mining.progress = 0;
+    }
+    this.mining.progress += dt;
+    const total = breakTime(id);
+    const stage = Math.min(9, Math.floor((this.mining.progress / total) * 10));
+    this.crackMesh.visible = true;
+    this.crackMesh.position.set(b.x + 0.5, b.y + 0.5, b.z + 0.5);
+    if (this.crackMat.map !== this.crackTextures[stage]) {
+      this.crackMat.map = this.crackTextures[stage];
+      this.crackMat.needsUpdate = true;
+    }
+    if (this.mining.progress >= total) {
+      this.world.setBlock(b.x, b.y, b.z, AIR);
+      this._remeshAround(b);
+      this._spawnBreakParticles(b, id);
+      this._playSound(0.16, 0.08);
+      this.mining.progress = 0;
+      this.mining.key = null;
+      this.crackMesh.visible = false;
+      this._scheduleSave();
+    }
   }
 
   // First-person held block. Added to the scene and repositioned relative to the
@@ -295,24 +393,27 @@ export class Game {
     canvas.addEventListener('mousedown', (e) => {
       if (!this.locked) return;
       if (e.button === 0) {
-        const target = getTarget(this.world, this.camera);
-        const id = target ? this.world.getBlock(target.block.x, target.block.y, target.block.z) : 0;
-        const changed = breakBlock(this.world, this.camera);
-        if (changed) {
-          this._remeshAround(changed);
-          this._spawnBreakParticles(changed, id);
-          this._playSound(0.16, 0.08);
-        }
+        this.mining.active = true; // hold to break
       } else if (e.button === 2) {
         const changed = placeBlock(this.world, this.camera, this.player, this.ui.getSelectedBlock());
         if (changed) {
           this._remeshAround(changed);
           this._playSound(0.12, 0.06);
+          this._scheduleSave();
         }
       }
     });
 
+    window.addEventListener('mouseup', (e) => {
+      if (e.button === 0) this._stopMining();
+    });
+
     canvas.addEventListener('contextmenu', (e) => e.preventDefault());
+
+    window.addEventListener('pagehide', () => this._saveWorld());
+    document.addEventListener('visibilitychange', () => {
+      if (document.visibilityState === 'hidden') this._saveWorld();
+    });
 
     window.addEventListener(
       'wheel',
@@ -348,6 +449,7 @@ export class Game {
         this.inventoryOpen = false;
         this.ui.setInventoryOpen(false);
       }
+      if (!this.locked) this._stopMining();
       this._refreshOverlays();
     });
   }
@@ -480,6 +582,7 @@ export class Game {
 
     this._updateChunks();
     this._updateHighlight();
+    this._updateMining(dt);
     this._updateViewModel();
     this._updateParticles(dt);
 

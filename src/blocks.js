@@ -84,6 +84,36 @@ export function allTextureNames() {
   return [...set];
 }
 
+// Seconds to break each block by hand. Infinity = unbreakable.
+export const HARDNESS = {
+  [GRASS]: 0.6,
+  [DIRT]: 0.6,
+  [SAND]: 0.6,
+  [SNOW]: 0.4,
+  [OAK_LEAVES]: 0.3,
+  [OAK_LOG]: 1.5,
+  [OAK_PLANKS]: 1.5,
+  [GLASS]: 0.4,
+  [STONE]: 1.9,
+  [COBBLESTONE]: 2.1,
+  [BRICK]: 2.1,
+  [COAL_ORE]: 2.3,
+  [IRON_ORE]: 2.6,
+  [GOLD_ORE]: 2.6,
+  [DIAMOND_ORE]: 2.9,
+  [WATER]: Infinity,
+  [BEDROCK]: Infinity,
+};
+
+export function breakTime(id) {
+  const h = HARDNESS[id];
+  return h === undefined ? 1.0 : h;
+}
+
+export function isBreakable(id) {
+  return id !== AIR && breakTime(id) !== Infinity;
+}
+
 export function isOpaque(id) {
   const def = BLOCKS[id];
   return !!(def && def.opaque);

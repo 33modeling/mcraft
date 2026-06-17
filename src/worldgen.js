@@ -145,6 +145,9 @@ export function generateChunk(world, chunk, noise) {
     }
   }
 
+  // 3) Re-apply any player edits recorded for this chunk.
+  world.applyEdits(chunk);
+
   chunk.generated = true;
   chunk.dirty = true;
 }

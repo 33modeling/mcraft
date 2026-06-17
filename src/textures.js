@@ -314,3 +314,37 @@ export function buildTextureAtlas() {
 
   return { texture, uvForName, iconCanvas, canvas, sampleColor };
 }
+
+// Ten progressive crack overlays (destroy_stage_0..9) for the mining animation.
+// Returns an array of THREE.CanvasTexture with transparent backgrounds.
+export function buildCrackTextures() {
+  const out = [];
+  for (let stage = 0; stage < 10; stage++) {
+    const canvas = document.createElement('canvas');
+    canvas.width = TILE;
+    canvas.height = TILE;
+    const ctx = canvas.getContext('2d');
+    const img = ctx.createImageData(TILE, TILE);
+    const rand = mulberry32(1234 + stage * 97);
+    const cracks = 1 + stage; // more cracks as the block nears breaking
+    for (let i = 0; i < cracks; i++) {
+      let x = Math.floor(rand() * TILE);
+      let y = Math.floor(rand() * TILE);
+      const len = 4 + Math.floor(rand() * 8);
+      for (let k = 0; k < len; k++) {
+        if (x >= 0 && x < TILE && y >= 0 && y < TILE) {
+          px(img.data, x, y, 12, 12, 12, 200);
+        }
+        x += rand() < 0.5 ? 1 : rand() < 0.5 ? -1 : 0;
+        y += rand() < 0.5 ? 1 : -1;
+      }
+    }
+    ctx.putImageData(img, 0, 0);
+    const tex = new THREE.CanvasTexture(canvas);
+    tex.magFilter = THREE.NearestFilter;
+    tex.minFilter = THREE.NearestFilter;
+    tex.generateMipmaps = false;
+    out.push(tex);
+  }
+  return out;
+}

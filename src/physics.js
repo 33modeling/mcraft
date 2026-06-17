@@ -14,9 +14,15 @@ import {
   TERMINAL_VELOCITY,
   floorDiv,
 } from './constants.js';
-import { isSolid } from './blocks.js';
+import { isSolid, WATER } from './blocks.js';
 
 const HALF = PLAYER_WIDTH / 2;
+const SWIM_UP = 4.5;
+
+// Is the player's body inside a water block (checked at chest height)?
+function isInWater(world, pos) {
+  return world.getBlock(Math.floor(pos.x), Math.floor(pos.y + 0.9), Math.floor(pos.z)) === WATER;
+}
 const STEP = 0.05; // collision sub-step (blocks) — small enough to avoid tunnelling
 const EPS = 1e-4;
 
@@ -95,11 +101,24 @@ export function updatePhysics(player, world, dt) {
     wishZ /= wishLen;
   }
 
+  const inWater = !player.flying && isInWater(world, pos);
+  player.inWater = inWater;
+
   if (player.flying) {
     const speed = keys.sprint ? FLY_SPRINT_SPEED : FLY_SPEED;
     player.velocity.x = wishX * speed;
     player.velocity.z = wishZ * speed;
     player.velocity.y = ((keys.jump ? 1 : 0) - (keys.sneak ? 1 : 0)) * speed;
+  } else if (inWater) {
+    // Swimming: slower movement, gentle sinking, jump to paddle upward.
+    const speed = (keys.sprint ? SPRINT_SPEED : WALK_SPEED) * 0.5;
+    player.velocity.x = wishX * speed;
+    player.velocity.z = wishZ * speed;
+
+    player.velocity.y -= GRAVITY * 0.22 * dt; // buoyancy reduces effective gravity
+    player.velocity.y *= 0.86; // water drag
+    if (player.velocity.y < -6) player.velocity.y = -6;
+    if (keys.jump) player.velocity.y = SWIM_UP;
   } else {
     const speed = keys.sprint ? SPRINT_SPEED : WALK_SPEED;
     player.velocity.x = wishX * speed;
