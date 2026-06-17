@@ -93,6 +93,11 @@ export class UI {
       `Facing: ${facing[dirIdx]}`,
       `Mode: ${info.flying ? 'fly (creative)' : info.onGround ? 'walk' : 'fall'}`,
     ];
+    if (info.time !== undefined) {
+      const h = Math.floor(info.time * 24);
+      const m = Math.floor((info.time * 24 - h) * 60);
+      lines.push(`Time: ${String(h).padStart(2, '0')}:${String(m).padStart(2, '0')}`);
+    }
     if (info.looking) lines.push(`Targeted: ${info.looking}`);
     this.debugEl.textContent = lines.join('\n');
   }

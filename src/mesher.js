@@ -8,6 +8,7 @@
 import * as THREE from 'three';
 import { CHUNK_SIZE, WORLD_HEIGHT } from './constants.js';
 import { BLOCKS, AIR, isOpaque, textureForFace } from './blocks.js';
+import { computeChunkLight, idxP } from './lighting.js';
 
 // Each face is fully described by an origin corner O and two in-plane unit
 // vectors U, V chosen so that U x V == the outward normal (-> CCW front faces).
@@ -49,7 +50,7 @@ function vertexAO(side1, side2, corner) {
 }
 
 function makeBuffers() {
-  return { positions: [], colors: [], uvs: [], indices: [], count: 0 };
+  return { positions: [], colors: [], uvs: [], lights: [], indices: [], count: 0 };
 }
 
 function buildGeometry(buf) {
@@ -58,6 +59,7 @@ function buildGeometry(buf) {
   geo.setAttribute('position', new THREE.Float32BufferAttribute(buf.positions, 3));
   geo.setAttribute('color', new THREE.Float32BufferAttribute(buf.colors, 3));
   geo.setAttribute('uv', new THREE.Float32BufferAttribute(buf.uvs, 2));
+  geo.setAttribute('light', new THREE.Float32BufferAttribute(buf.lights, 2));
   geo.setIndex(buf.indices);
   return geo;
 }
@@ -67,6 +69,7 @@ export function buildChunkGeometry(world, chunk, atlas) {
   const baseZ = chunk.cz * CHUNK_SIZE;
   const opaque = makeBuffers();
   const transparent = makeBuffers();
+  const light = computeChunkLight(world, chunk);
 
   for (let ly = 0; ly < WORLD_HEIGHT; ly++) {
     for (let lz = 0; lz < CHUNK_SIZE; lz++) {
@@ -90,6 +93,10 @@ export function buildChunkGeometry(world, chunk, atlas) {
           if (!shouldEmit(id, def, nId)) continue;
 
           const uvRect = atlas.uvForName(textureForFace(id, face.facing));
+          // Light reaching this face = light of the neighbour cell it faces.
+          const li = idxP(nx - baseX, ny, nz - baseZ);
+          const skyN = light.sky[li] / 15;
+          const blkN = light.blk[li] / 15;
           const o = face.o;
           const u = face.u;
           const v = face.v;
@@ -143,6 +150,7 @@ export function buildChunkGeometry(world, chunk, atlas) {
 
             const shade = face.shade * AO_LEVELS[ao[c]];
             buf.colors.push(shade, shade, shade);
+            buf.lights.push(skyN, blkN);
           }
           buf.count += 4;
 

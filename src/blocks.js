@@ -20,6 +20,8 @@ export const GOLD_ORE = 14;
 export const DIAMOND_ORE = 15;
 export const BRICK = 16;
 export const SNOW = 17;
+export const GLOWSTONE = 18;
+export const TORCH = 19;
 
 // `solid`: participates in collision and stops the player.
 // `opaque`: fully hides the neighbouring face behind it (face culling).
@@ -34,6 +36,7 @@ function block(name, textures, opts = {}) {
     render: opts.render !== undefined ? opts.render : true,
     liquid: !!opts.liquid,
     transparent: !!opts.transparent, // uses the transparent render pass
+    emission: opts.emission || 0, // 0..15 block-light output
   };
 }
 
@@ -56,6 +59,8 @@ export const BLOCKS = {
   [DIAMOND_ORE]: block('Diamond Ore', { all: 'diamond_ore' }),
   [BRICK]: block('Bricks', { all: 'brick' }),
   [SNOW]: block('Snow', { all: 'snow' }),
+  [GLOWSTONE]: block('Glowstone', { all: 'glowstone' }, { emission: 15 }),
+  [TORCH]: block('Torch', { all: 'torch' }, { emission: 14 }),
 };
 
 // Resolve the texture name for a given block id and face direction.
@@ -101,6 +106,8 @@ export const HARDNESS = {
   [IRON_ORE]: 2.6,
   [GOLD_ORE]: 2.6,
   [DIAMOND_ORE]: 2.9,
+  [GLOWSTONE]: 0.5,
+  [TORCH]: 0.2,
   [WATER]: Infinity,
   [BEDROCK]: Infinity,
 };
@@ -126,7 +133,7 @@ export function isSolid(id) {
 
 // Default hotbar contents (slot order). Slots are mutable at runtime via the
 // creative inventory.
-export const HOTBAR = [GRASS, DIRT, STONE, COBBLESTONE, OAK_PLANKS, OAK_LOG, SAND, GLASS, BRICK];
+export const HOTBAR = [GRASS, STONE, COBBLESTONE, OAK_PLANKS, OAK_LOG, GLASS, SAND, TORCH, GLOWSTONE];
 
 // Every placeable block, shown in the creative inventory (E). Excludes air.
 export const INVENTORY = [
@@ -141,6 +148,8 @@ export const INVENTORY = [
   GLASS,
   BRICK,
   SNOW,
+  TORCH,
+  GLOWSTONE,
   WATER,
   BEDROCK,
   COAL_ORE,

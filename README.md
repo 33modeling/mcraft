@@ -14,6 +14,11 @@ whole thing runs from any static file server.
   Perlin/fBm noise.
 - **Chunk streaming** around the player with face-culled, ambient-occlusion-shaded
   meshes (separate opaque and transparent passes for glass and water).
+- **Dynamic lighting** — sky-light and block-light propagation (BFS) baked into
+  the mesh and combined in a custom shader, so torches and glowstone illuminate
+  their surroundings and covered areas fall into shadow.
+- **Day/night cycle** with a moving sun and moon, drifting clouds, and a sky that
+  shifts from day blue through dawn/dusk orange to night.
 - **Break & place blocks** — hold-to-break mining with per-block hardness and a
   progressive crack overlay, voxel-DDA raycast targeting and a highlight box.
 - **Persistent edits** — your changes are kept across chunk reloads and saved to

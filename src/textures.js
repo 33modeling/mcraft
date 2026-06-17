@@ -244,6 +244,33 @@ const PAINTERS = {
       px(d, x, y, 220, 228, 240);
     }
   },
+  glowstone(d, rand) {
+    speckle(d, rand, [148, 116, 60], 16);
+    // bright glowing nodules
+    for (let i = 0; i < 22; i++) {
+      const x = Math.floor(rand() * TILE);
+      const y = Math.floor(rand() * TILE);
+      px(d, x, y, 250, 226, 130);
+      if (x + 1 < TILE) px(d, x + 1, y, 240, 200, 110);
+      if (y + 1 < TILE) px(d, x, y + 1, 240, 200, 110);
+    }
+  },
+  torch(d, rand) {
+    // dark block with a glowing top — a stand-in for a real torch.
+    speckle(d, rand, [60, 44, 26], 10);
+    // wooden handle down the middle
+    for (let y = 6; y < TILE; y++) {
+      for (let x = 7; x <= 8; x++) px(d, x, y, 120, 86, 50);
+    }
+    // bright flame near the top
+    for (let i = 0; i < 18; i++) {
+      const x = 6 + Math.floor(rand() * 4);
+      const y = 1 + Math.floor(rand() * 5);
+      px(d, x, y, 255, 224, 120);
+    }
+    px(d, 7, 0, 255, 244, 180);
+    px(d, 8, 0, 255, 244, 180);
+  },
 };
 
 export function buildTextureAtlas() {

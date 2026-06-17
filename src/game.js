@@ -20,10 +20,16 @@ import { Player } from './player.js';
 import { updatePhysics } from './physics.js';
 import { getTarget, placeBlock } from './interaction.js';
 import { UI } from './ui.js';
+import { Sky } from './sky.js';
 import { BLOCKS, AIR, WATER, textureForFace, breakTime, isBreakable } from './blocks.js';
 
 const GEN_PER_FRAME = 6;
-const MESH_PER_FRAME = 4;
+const MESH_PER_FRAME = 3;
+const DAY_LENGTH = 300; // seconds for a full day/night cycle
+
+const DAY_SKY = new THREE.Color(0x8fc4ff);
+const NIGHT_SKY = new THREE.Color(0x0a1026);
+const DUSK_SKY = new THREE.Color(0xffa24d);
 
 export class Game {
   constructor(container) {
@@ -43,6 +49,9 @@ export class Game {
     this.crackTextures = buildCrackTextures();
     this.mining = { active: false, key: null, progress: 0 };
     this._saveTimer = null;
+    this.timeOfDay = 0.3; // 0 = midnight, 0.25 = sunrise, 0.5 = noon, 0.75 = sunset
+
+    this.daylightUniform = { value: 1 };
     this.opaqueMat = new THREE.MeshBasicMaterial({ map: this.atlas.texture, vertexColors: true });
     this.transparentMat = new THREE.MeshBasicMaterial({
       map: this.atlas.texture,
@@ -51,6 +60,8 @@ export class Game {
       depthWrite: false,
       side: THREE.FrontSide,
     });
+    this._applyLighting(this.opaqueMat);
+    this._applyLighting(this.transparentMat);
     // Held-block viewmodel uses the atlas at full brightness (no vertex colors).
     this.viewMat = new THREE.MeshBasicMaterial({ map: this.atlas.texture });
 
@@ -64,6 +75,7 @@ export class Game {
     this._particles = [];
     this._audioCtx = null;
 
+    this.sky = new Sky(this.scene);
     this._initHighlight();
     this._initCrackOverlay();
     this._initViewModel();
@@ -91,27 +103,52 @@ export class Game {
   _initScene() {
     this.scene = new THREE.Scene();
 
-    // Vertical gradient sky (zenith -> horizon) as a background texture.
-    const c = document.createElement('canvas');
-    c.width = 1;
-    c.height = 64;
-    const ctx = c.getContext('2d');
-    const grad = ctx.createLinearGradient(0, 0, 0, 64);
-    grad.addColorStop(0.0, '#5b9be6'); // zenith
-    grad.addColorStop(0.6, '#87ceeb'); // mid sky
-    grad.addColorStop(1.0, '#bcd9f2'); // horizon
-    ctx.fillStyle = grad;
-    ctx.fillRect(0, 0, 1, 64);
-    const skyTex = new THREE.CanvasTexture(c);
-    skyTex.colorSpace = THREE.SRGBColorSpace;
-    this.scene.background = skyTex;
-
-    // Fog matched to the horizon colour so it blends into the gradient.
-    const horizon = new THREE.Color(0xbcd9f2);
+    // Sky and fog colours are updated every frame by the day/night cycle.
+    this.skyColor = new THREE.Color(0x8fc4ff);
+    this.scene.background = this.skyColor;
     const far = (RENDER_DISTANCE - 0.5) * CHUNK_SIZE;
-    this.scene.fog = new THREE.Fog(horizon, far * 0.55, far);
+    this.scene.fog = new THREE.Fog(this.skyColor.clone(), far * 0.5, far);
 
     this.camera = new THREE.PerspectiveCamera(72, window.innerWidth / window.innerHeight, 0.1, 1000);
+  }
+
+  // Inject sky/block light into a MeshBasicMaterial. Geometry carries a `light`
+  // (sky, block) vertex attribute; uDaylight scales the sky contribution.
+  _applyLighting(material) {
+    material.onBeforeCompile = (shader) => {
+      shader.uniforms.uDaylight = this.daylightUniform;
+      shader.vertexShader = shader.vertexShader
+        .replace('#include <common>', '#include <common>\nattribute vec2 light;\nvarying vec2 vLight;')
+        .replace('#include <begin_vertex>', '#include <begin_vertex>\nvLight = light;');
+      shader.fragmentShader = shader.fragmentShader
+        .replace(
+          '#include <common>',
+          '#include <common>\nvarying vec2 vLight;\nuniform float uDaylight;',
+        )
+        .replace(
+          '#include <color_fragment>',
+          '#include <color_fragment>\n{ float bSky = pow(vLight.x, 1.35) * uDaylight; float bBlk = pow(vLight.y, 1.4); float bright = max(max(bSky, bBlk), 0.05); diffuseColor.rgb *= bright; }',
+        );
+    };
+    material.needsUpdate = true;
+  }
+
+  _updateDayNight(dt) {
+    this.timeOfDay = (this.timeOfDay + dt / DAY_LENGTH) % 1;
+    const sunHeight = Math.sin((this.timeOfDay - 0.25) * Math.PI * 2);
+
+    // Daylight factor: bright by day, dim moonlight at night.
+    const daylight = Math.min(1, Math.max(0.12, sunHeight * 0.9 + 0.35));
+    this.daylightUniform.value = daylight;
+
+    // Sky colour: night -> day, tinted orange near the horizon (dawn/dusk).
+    const dayAmt = Math.min(1, Math.max(0, (sunHeight + 0.15) / 0.35));
+    this.skyColor.copy(NIGHT_SKY).lerp(DAY_SKY, dayAmt);
+    const duskAmt = Math.max(0, 1 - Math.abs(sunHeight) / 0.22) * Math.max(0, Math.min(1, sunHeight + 0.5));
+    this.skyColor.lerp(DUSK_SKY, duskAmt * 0.5);
+    this.scene.fog.color.copy(this.skyColor);
+
+    this.sky.update(this.timeOfDay, daylight, this.camera.position, dt);
   }
 
   _initHighlight() {
@@ -593,6 +630,8 @@ export class Game {
     const submerged = this.world.getBlock(ex, ey, ez) === WATER;
     this.waterOverlay.style.display = submerged ? 'block' : 'none';
 
+    this._updateDayNight(dt);
+
     // FPS, averaged over ~0.5s.
     this._fpsAccum += dt;
     this._fpsFrames++;
@@ -618,6 +657,7 @@ export class Game {
       loadedChunks: this.world.chunks.size,
       flying: this.player.flying,
       onGround: this.player.onGround,
+      time: this.timeOfDay,
       looking,
     });
 
