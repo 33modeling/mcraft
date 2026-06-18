@@ -23,7 +23,7 @@ import { UI } from './ui.js';
 import { Sky } from './sky.js';
 import { DroppedItems } from './items.js';
 import { MobManager } from './mobs.js';
-import { BLOCKS, AIR, WATER, OAK_LEAVES, textureForFace, breakTime, isBreakable } from './blocks.js';
+import { BLOCKS, AIR, WATER, STONE, BEDROCK, OAK_LEAVES, textureForFace, breakTime, isBreakable } from './blocks.js';
 import {
   RECIPES,
   APPLE,
@@ -374,6 +374,40 @@ export class Game {
     }
     this.mobs.clear();
     this.ui.setMode(survival);
+  }
+
+  // Creeper explosion: clear a sphere of blocks, remesh, hurt the player.
+  _explode(x, y, z, r) {
+    const cx = Math.floor(x);
+    const cy = Math.floor(y);
+    const cz = Math.floor(z);
+    const r2 = r * r;
+    for (let dx = -r; dx <= r; dx++) {
+      for (let dy = -r; dy <= r; dy++) {
+        for (let dz = -r; dz <= r; dz++) {
+          if (dx * dx + dy * dy + dz * dz > r2) continue;
+          const bx = cx + dx;
+          const by = cy + dy;
+          const bz = cz + dz;
+          const id = this.world.getBlock(bx, by, bz);
+          if (id === AIR || id === WATER || id === BEDROCK) continue;
+          this.world.setBlock(bx, by, bz, AIR);
+        }
+      }
+    }
+    const c0x = floorDiv(cx - r, CHUNK_SIZE) - 1;
+    const c1x = floorDiv(cx + r, CHUNK_SIZE) + 1;
+    const c0z = floorDiv(cz - r, CHUNK_SIZE) - 1;
+    const c1z = floorDiv(cz + r, CHUNK_SIZE) + 1;
+    for (let ccx = c0x; ccx <= c1x; ccx++) {
+      for (let ccz = c0z; ccz <= c1z; ccz++) this._meshIfReady(ccx, ccz);
+    }
+    this._spawnBreakParticles({ x: cx, y: cy, z: cz }, STONE);
+    this._playSound(0.4, 0.25);
+
+    const pd = Math.hypot(this.player.position.x - x, this.player.position.y - y, this.player.position.z - z);
+    if (pd < r + 2) this._damage(Math.max(2, Math.round((1 - pd / (r + 2)) * 14)));
+    this._scheduleSave();
   }
 
   _damage(amount) {
@@ -904,7 +938,10 @@ export class Game {
     if (this.gameMode === 'survival' && this.locked && this.alive) {
       this.mobs.update(dt, this.player, {
         daylight: this.daylightUniform.value,
+        camera: this.camera,
         damagePlayer: (n) => this._damage(n),
+        explode: (x, y, z, r) => this._explode(x, y, z, r),
+        spawnDrop: (id, x, y, z) => this.drops.spawn(id, x, y, z),
       });
     }
     this.ui.updateHUD(this.health, this.hunger);

@@ -36,8 +36,10 @@ whole thing runs from any static file server.
   (faster, tiered mining + durability), the right tool required to harvest ores,
   food you eat to refill hunger, and crafting + furnace-style smelting (planks,
   sticks, tools, torches, glass, iron ingots, cooked meat).
-- **Mobs**: wandering pigs and sheep, plus zombies that spawn at night, hunt the
-  player, deal contact damage and burn in daylight. Left-click to fight back.
+- **Mobs**: passive pigs, cows, sheep and chickens (that drop meat, leather and
+  feathers), and hostiles that spawn at night — zombies (melee), skeletons
+  (ranged arrows) and creepers (that chase, prime a fuse and explode). Mobs show
+  a health bar when hurt and drop loot; left-click (with a sword) to fight back.
 - **21 block types** with procedural textures: grass, dirt, stone, cobblestone,
   oak log/leaves/planks, sand, glass, water, bedrock, coal/iron/gold/diamond ore,
   bricks, snow, glowstone, torch and cactus.
