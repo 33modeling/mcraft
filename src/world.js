@@ -18,6 +18,7 @@ export class Chunk {
     this.blocks = new Uint8Array(CHUNK_VOLUME); // all AIR (0) initially
     this.generated = false; // terrain has been filled
     this.dirty = true;       // mesh needs (re)building
+    this.meshing = false;    // a worker mesh job is in flight
     this.opaqueMesh = null;
     this.transparentMesh = null;
   }

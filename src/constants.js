@@ -7,7 +7,8 @@ export const SEA_LEVEL = 62;        // water fills up to (and including) this y
 export const CHUNK_AREA = CHUNK_SIZE * CHUNK_SIZE;
 export const CHUNK_VOLUME = CHUNK_AREA * WORLD_HEIGHT;
 
-export const RENDER_DISTANCE = 7;   // chunks loaded in each direction from player
+export const RENDER_DISTANCE = 9;   // chunks loaded in each direction from player
+                                    // (meshing is offloaded to a Web Worker)
 
 // Physics (units are blocks and seconds).
 export const GRAVITY = 30;

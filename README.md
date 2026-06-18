@@ -16,6 +16,9 @@ whole thing runs from any static file server.
   temperature/humidity noise, plus winding 3D-noise caves to mine through.
 - **Chunk streaming** around the player with face-culled, ambient-occlusion-shaded
   meshes (separate opaque and transparent passes for glass and water).
+- **Off-thread meshing** — chunk geometry + lighting are built in a Web Worker
+  (reusing the exact same pure code as the main thread), so the render distance
+  can be larger without the main thread hitching.
 - **Dynamic lighting** — sky-light and block-light propagation (BFS) baked into
   the mesh and combined in a custom shader, so torches and glowstone illuminate
   their surroundings and covered areas fall into shadow.
@@ -93,7 +96,15 @@ src/
   textures.js         procedural canvas texture atlas
   world.js            Chunk storage + world-space block access
   worldgen.js         deterministic terrain + tree generation
-  mesher.js           voxels -> geometry (face culling + ambient occlusion)
+  lighting.js         sky/block light propagation (BFS)
+  meshgen.js          pure voxels -> geometry arrays (face culling + AO + light)
+  mesher.js           THREE wrapper + synchronous fallback
+  mesher.worker.js    Web Worker that runs meshgen off the main thread
+  mesherpool.js       main-thread handle to the meshing worker
+  itemdefs.js         item registry (tools, food, materials) + recipes
+  items.js            dropped item/block entities
+  mobs.js             mob models, AI, projectiles, drops
+  sky.js              sun, moon and clouds
   player.js           camera rig + pointer-lock look + input state
   physics.js          gravity + swept AABB voxel collision
   interaction.js      raycast targeting + break/place

@@ -14,7 +14,8 @@ import {
 import { Noise } from './noise.js';
 import { World } from './world.js';
 import { generateChunk, surfaceInfo } from './worldgen.js';
-import { buildChunkGeometry } from './mesher.js';
+import { buildChunkGeometry, arraysToGeometry } from './mesher.js';
+import { MesherPool } from './mesherpool.js';
 import { buildTextureAtlas, buildCrackTextures } from './textures.js';
 import { Player } from './player.js';
 import { updatePhysics } from './physics.js';
@@ -39,7 +40,7 @@ import {
 } from './itemdefs.js';
 
 const GEN_PER_FRAME = 6;
-const MESH_PER_FRAME = 3;
+const MESH_PER_FRAME = 4;
 const DAY_LENGTH = 300; // seconds for a full day/night cycle
 
 const MAX_HEALTH = 20;
@@ -67,6 +68,7 @@ export class Game {
 
     this.atlas = buildTextureAtlas();
     this.crackTextures = buildCrackTextures();
+    this.mesherPool = new MesherPool(this.atlas.uvRects, (r) => this._onMeshResult(r));
     this.mining = { active: false, key: null, progress: 0 };
     this._saveTimer = null;
     this.timeOfDay = 0.3; // 0 = midnight, 0.25 = sunrise, 0.5 = noon, 0.75 = sunset
@@ -677,7 +679,7 @@ export class Game {
     for (let dx = -R + 1; dx <= R - 1; dx++) {
       for (let dz = -R + 1; dz <= R - 1; dz++) {
         const c = this.world.getChunk(pcx + dx, pcz + dz);
-        if (c && c.dirty && this.world.neighborsReady(pcx + dx, pcz + dz)) this._meshChunk(c);
+        if (c && c.dirty && !c.meshing && this.world.neighborsReady(pcx + dx, pcz + dz)) this._meshChunk(c);
       }
     }
   }
@@ -804,10 +806,31 @@ export class Game {
   }
 
   _meshChunk(chunk) {
-    const { opaque, transparent } = buildChunkGeometry(this.world, chunk, this.atlas);
-    this._swapMesh(chunk, 'opaqueMesh', opaque, this.opaqueMat);
-    this._swapMesh(chunk, 'transparentMesh', transparent, this.transparentMat);
-    chunk.dirty = false;
+    if (this.mesherPool.available) {
+      const neighbors = [];
+      for (let dx = -1; dx <= 1; dx++) {
+        for (let dz = -1; dz <= 1; dz++) {
+          const c = this.world.getChunk(chunk.cx + dx, chunk.cz + dz);
+          if (c && c.generated) neighbors.push({ dx, dz, blocks: c.blocks });
+        }
+      }
+      chunk.dirty = false;
+      chunk.meshing = true;
+      this.mesherPool.enqueue(chunkKey(chunk.cx, chunk.cz), chunk.cx, chunk.cz, neighbors);
+    } else {
+      const { opaque, transparent } = buildChunkGeometry(this.world, chunk, this.atlas);
+      this._swapMesh(chunk, 'opaqueMesh', opaque, this.opaqueMat);
+      this._swapMesh(chunk, 'transparentMesh', transparent, this.transparentMat);
+      chunk.dirty = false;
+    }
+  }
+
+  _onMeshResult(data) {
+    const chunk = this.world.chunks.get(data.key);
+    if (!chunk) return; // chunk unloaded while the worker was meshing it
+    chunk.meshing = false;
+    this._swapMesh(chunk, 'opaqueMesh', arraysToGeometry(data.opaque), this.opaqueMat);
+    this._swapMesh(chunk, 'transparentMesh', arraysToGeometry(data.transparent), this.transparentMat);
   }
 
   _swapMesh(chunk, slot, geometry, material) {
@@ -827,7 +850,7 @@ export class Game {
 
   _meshIfReady(cx, cz) {
     const c = this.world.getChunk(cx, cz);
-    if (c && c.generated && c.dirty && this.world.neighborsReady(cx, cz)) this._meshChunk(c);
+    if (c && c.generated && c.dirty && !c.meshing && this.world.neighborsReady(cx, cz)) this._meshChunk(c);
   }
 
   // After an edit, rebuild the affected chunk and any neighbour it touched.
@@ -870,7 +893,7 @@ export class Game {
     for (const c of cands) {
       if (c.d2 > R * R) continue;
       const chunk = this.world.getChunk(c.cx, c.cz);
-      if (chunk && chunk.generated && chunk.dirty && this.world.neighborsReady(c.cx, c.cz)) {
+      if (chunk && chunk.generated && chunk.dirty && !chunk.meshing && this.world.neighborsReady(c.cx, c.cz)) {
         this._meshChunk(chunk);
         if (--meshBudget <= 0) break;
       }

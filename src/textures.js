@@ -479,7 +479,11 @@ export function buildTextureAtlas() {
     return [d[0], d[1], d[2]];
   }
 
-  return { texture, uvForName, iconCanvas, canvas, sampleColor };
+  // Plain name -> uv-rect map (serialisable, sent to the meshing worker).
+  const uvRects = {};
+  for (const name of names) uvRects[name] = uvForName(name);
+
+  return { texture, uvForName, iconCanvas, canvas, sampleColor, uvRects };
 }
 
 // Ten progressive crack overlays (destroy_stage_0..9) for the mining animation.
