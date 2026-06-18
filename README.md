@@ -30,9 +30,12 @@ whole thing runs from any static file server.
 - **Minecraft-style UI**: hotbar (1–9 / scroll), creative inventory (E),
   inverting crosshair and an F3 debug overlay.
 - **Creative & survival modes** (toggle with `G`). Survival adds hearts + hunger,
-  fall/drown/void damage, death & respawn, block drops you collect into an
-  inventory with counts, and simple crafting (logs → planks, sand → glass,
-  coal + planks → torches).
+  fall/drown/void damage, death & respawn, and block drops collected into an
+  inventory with counts.
+- **Tools, food & crafting**: wood/stone/iron pickaxes, axes, shovels and swords
+  (faster, tiered mining + durability), the right tool required to harvest ores,
+  food you eat to refill hunger, and crafting + furnace-style smelting (planks,
+  sticks, tools, torches, glass, iron ingots, cooked meat).
 - **Mobs**: wandering pigs and sheep, plus zombies that spawn at night, hunt the
   player, deal contact damage and burn in daylight. Left-click to fight back.
 - **21 block types** with procedural textures: grass, dirt, stone, cobblestone,

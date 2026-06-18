@@ -23,16 +23,20 @@ import { UI } from './ui.js';
 import { Sky } from './sky.js';
 import { DroppedItems } from './items.js';
 import { MobManager } from './mobs.js';
+import { BLOCKS, AIR, WATER, OAK_LEAVES, textureForFace, breakTime, isBreakable } from './blocks.js';
 import {
-  BLOCKS,
-  AIR,
-  WATER,
   RECIPES,
-  textureForFace,
-  breakTime,
-  isBreakable,
-  blockDrop,
-} from './blocks.js';
+  APPLE,
+  dropFor,
+  miningSpeed,
+  canHarvest,
+  foodValue,
+  isTool,
+  isItem,
+  itemDef,
+  isPlaceable,
+  stackName,
+} from './itemdefs.js';
 
 const GEN_PER_FRAME = 6;
 const MESH_PER_FRAME = 3;
@@ -73,7 +77,10 @@ export class Game {
     this.hunger = MAX_HUNGER;
     this.air = AIR_MAX;
     this.alive = true;
-    this.inv = {}; // blockId -> count
+    this.inv = {}; // stackId -> count
+    this.toolDur = {}; // stackId -> remaining durability (shared per tool type)
+    this.eating = false;
+    this._eatTimer = 0;
     this._peakY = null;
     this._drownTimer = 0;
     this._voidTimer = 0;
@@ -106,7 +113,7 @@ export class Game {
     this._audioCtx = null;
 
     this.sky = new Sky(this.scene);
-    this.drops = new DroppedItems(this.scene, this.atlas, this.viewMat, this.world);
+    this.drops = new DroppedItems(this.scene, this.atlas, this.world);
     this.mobs = new MobManager(this.scene, this.world);
     this.ui.onCraft = (i) => this._craft(i);
     this.ui.setMode(false);
@@ -257,6 +264,7 @@ export class Game {
     }
     const b = hit.block;
     const id = this.world.getBlock(b.x, b.y, b.z);
+    const sel = this.ui.getSelectedBlock();
     if (!isBreakable(id)) {
       this.crackMesh.visible = false;
       this.mining.progress = 0;
@@ -269,7 +277,7 @@ export class Game {
       this.mining.progress = 0;
     }
     this.mining.progress += dt;
-    const total = breakTime(id);
+    const total = breakTime(id) / miningSpeed(sel, id);
     const stage = Math.min(9, Math.floor((this.mining.progress / total) * 10));
     this.crackMesh.visible = true;
     this.crackMesh.position.set(b.x + 0.5, b.y + 0.5, b.z + 0.5);
@@ -282,12 +290,56 @@ export class Game {
       this._remeshAround(b);
       this._spawnBreakParticles(b, id);
       this._playSound(0.16, 0.08);
-      const drop = blockDrop(id);
-      if (drop !== AIR) this.drops.spawn(drop, b.x + 0.5, b.y + 0.5, b.z + 0.5);
+      let dropId;
+      if (id === OAK_LEAVES) dropId = Math.random() < 0.08 ? APPLE : AIR; // apples from leaves
+      else if (!canHarvest(sel, id)) dropId = AIR; // wrong/no tool: no drop
+      else dropId = dropFor(id);
+      if (dropId !== AIR) this.drops.spawn(dropId, b.x + 0.5, b.y + 0.5, b.z + 0.5);
+      this._useTool(sel);
       this.mining.progress = 0;
       this.mining.key = null;
       this.crackMesh.visible = false;
       this._scheduleSave();
+    }
+  }
+
+  _useTool(stackId) {
+    if (this.gameMode !== 'survival' || !isTool(stackId)) return;
+    const max = itemDef(stackId).durability;
+    let d = this.toolDur[stackId] !== undefined ? this.toolDur[stackId] : max;
+    d -= 1;
+    if (d <= 0) {
+      this.inv[stackId] = (this.inv[stackId] || 0) - 1; // tool breaks
+      this.toolDur[stackId] = max;
+      this._playSound(0.2, 0.1);
+    } else {
+      this.toolDur[stackId] = d;
+    }
+  }
+
+  _toolDurability(stackId) {
+    return this.toolDur[stackId] !== undefined ? this.toolDur[stackId] : itemDef(stackId).durability;
+  }
+
+  _updateEating(dt) {
+    if (!this.eating || !this.locked || this.gameMode !== 'survival') {
+      this._eatTimer = 0;
+      return;
+    }
+    const sel = this.ui.getSelectedBlock();
+    const fv = foodValue(sel);
+    if (fv <= 0 || (this.inv[sel] || 0) <= 0 || this.hunger >= MAX_HUNGER) {
+      this.eating = false;
+      this._eatTimer = 0;
+      return;
+    }
+    this._eatTimer += dt;
+    if (this._eatTimer >= 1.2) {
+      this.hunger = Math.min(MAX_HUNGER, this.hunger + fv);
+      this.inv[sel] = (this.inv[sel] || 0) - 1;
+      this._eatTimer = 0;
+      this._playSound(0.12, 0.18);
+      if ((this.inv[sel] || 0) <= 0) this.eating = false;
     }
   }
 
@@ -444,6 +496,9 @@ export class Game {
 
   _updateViewModel() {
     const block = this.ui.getSelectedBlock();
+    // The held-cube model only makes sense for blocks; hide it for items/tools.
+    this._vmMesh.visible = !isItem(block);
+    if (!this._vmMesh.visible) return;
     if (block !== this._vmBlock) {
       this._vmBlock = block;
       // Rewrite each box face's UVs to that block's atlas tile.
@@ -616,11 +671,25 @@ export class Game {
     canvas.addEventListener('mousedown', (e) => {
       if (!this.locked) return;
       if (e.button === 0) {
-        if (this.gameMode === 'creative') this._creativeBreak();
-        else if (this.mobs.meleeHit(this.camera, 3.4, 5)) this._playSound(0.12, 0.05);
-        else this.mining.active = true; // survival: hold to break
+        if (this.gameMode === 'creative') {
+          this._creativeBreak();
+        } else {
+          const sel = this.ui.getSelectedBlock();
+          const dmg = isTool(sel) && itemDef(sel).kind === 'sword' ? itemDef(sel).attack : 1;
+          if (this.mobs.meleeHit(this.camera, 3.4, dmg)) {
+            this._playSound(0.12, 0.05);
+            this._useTool(sel);
+          } else {
+            this.mining.active = true; // hold to break
+          }
+        }
       } else if (e.button === 2) {
         const sel = this.ui.getSelectedBlock();
+        if (this.gameMode === 'survival' && foodValue(sel) > 0) {
+          this.eating = true; // hold right-click to eat
+          return;
+        }
+        if (!isPlaceable(sel)) return; // tools/food can't be placed
         if (this.gameMode === 'survival' && (this.inv[sel] || 0) <= 0) return; // nothing to place
         const changed = placeBlock(this.world, this.camera, this.player, sel);
         if (changed) {
@@ -634,6 +703,7 @@ export class Game {
 
     window.addEventListener('mouseup', (e) => {
       if (e.button === 0) this._stopMining();
+      if (e.button === 2) this.eating = false;
     });
 
     canvas.addEventListener('contextmenu', (e) => e.preventDefault());
@@ -826,7 +896,8 @@ export class Game {
 
     this._updateDayNight(dt);
     if (this.locked) this._updateSurvival(dt, submerged);
-    this.drops.update(dt, this.player, (id) => {
+    this._updateEating(dt);
+    this.drops.update(dt, this.player, this.camera, (id) => {
       this.inv[id] = (this.inv[id] || 0) + 1;
       this._playSound(0.07, 0.04);
     });
@@ -837,7 +908,7 @@ export class Game {
       });
     }
     this.ui.updateHUD(this.health, this.hunger);
-    this.ui.updateCounts((id) => this.inv[id] || 0);
+    this.ui.updateHotbar((id) => this.inv[id] || 0, (id) => this._toolDurability(id));
 
     // FPS, averaged over ~0.5s.
     this._fpsAccum += dt;
@@ -867,6 +938,7 @@ export class Game {
       onGround: this.player.onGround,
       time: this.timeOfDay,
       mobs: this.mobs.count,
+      held: stackName(this.ui.getSelectedBlock()),
       looking,
     });
 

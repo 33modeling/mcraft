@@ -1,7 +1,8 @@
-// Heads-up display: hotbar, creative inventory, crafting, F3 debug, and the
-// survival HUD (hearts + hunger).
+// Heads-up display: hotbar (with counts + tool durability), inventory, crafting,
+// F3 debug, and the survival HUD (hearts + hunger).
 
-import { HOTBAR, INVENTORY, RECIPES, BLOCKS, textureForFace } from './blocks.js';
+import { HOTBAR, INVENTORY } from './blocks.js';
+import { RECIPES, ITEM_INVENTORY, stackTexture, stackName, isTool, itemDef } from './itemdefs.js';
 
 function heartPath(ctx, x, y, s) {
   ctx.beginPath();
@@ -34,6 +35,7 @@ export class UI {
     this.hungerCtx = document.getElementById('hunger').getContext('2d');
     this.slots = [];
     this.counts = [];
+    this.durbars = [];
 
     this._buildHotbar();
     this._buildInventory();
@@ -41,16 +43,21 @@ export class UI {
     this.selectSlot(0);
   }
 
+  _icon(stackId, px) {
+    const icon = this.atlas.iconCanvas(stackTexture(stackId), px);
+    icon.className = 'icon';
+    return icon;
+  }
+
   _buildHotbar() {
     this.hotbarEl.innerHTML = '';
     this.slots = [];
     this.counts = [];
-    this.slotBlocks.forEach((blockId, i) => {
+    this.durbars = [];
+    this.slotBlocks.forEach((stackId, i) => {
       const slot = document.createElement('div');
       slot.className = 'slot';
-      const icon = this.atlas.iconCanvas(textureForFace(blockId, 'side'), 44);
-      icon.className = 'icon';
-      slot.appendChild(icon);
+      slot.appendChild(this._icon(stackId, 44));
       const num = document.createElement('span');
       num.className = 'num';
       num.textContent = String(i + 1);
@@ -58,9 +65,13 @@ export class UI {
       const count = document.createElement('span');
       count.className = 'count';
       slot.appendChild(count);
+      const dur = document.createElement('span');
+      dur.className = 'durbar';
+      slot.appendChild(dur);
       this.hotbarEl.appendChild(slot);
       this.slots.push(slot);
       this.counts.push(count);
+      this.durbars.push(dur);
     });
   }
 
@@ -68,14 +79,12 @@ export class UI {
     if (!this.inventoryEl) return;
     const grid = this.inventoryEl.querySelector('.inv-grid');
     grid.innerHTML = '';
-    INVENTORY.forEach((blockId) => {
+    [...INVENTORY, ...ITEM_INVENTORY].forEach((stackId) => {
       const cell = document.createElement('div');
       cell.className = 'inv-cell';
-      cell.title = BLOCKS[blockId].name;
-      const icon = this.atlas.iconCanvas(textureForFace(blockId, 'side'), 40);
-      icon.className = 'icon';
-      cell.appendChild(icon);
-      cell.addEventListener('click', () => this.setSlotBlock(this.selected, blockId));
+      cell.title = stackName(stackId);
+      cell.appendChild(this._icon(stackId, 40));
+      cell.addEventListener('click', () => this.setSlotBlock(this.selected, stackId));
       grid.appendChild(cell);
     });
   }
@@ -88,11 +97,9 @@ export class UI {
     RECIPES.forEach((recipe, index) => {
       const row = document.createElement('div');
       row.className = 'craft-recipe';
-      const out = this.atlas.iconCanvas(textureForFace(recipe.out.id, 'side'), 24);
-      out.className = 'icon';
-      row.appendChild(out);
+      row.appendChild(this._icon(recipe.out.id, 24));
       const label = document.createElement('span');
-      const ins = recipe.in.map((r) => `${r.n} ${BLOCKS[r.id].name}`).join(' + ');
+      const ins = recipe.in.map((r) => `${r.n} ${stackName(r.id)}`).join(' + ');
       label.textContent = `${recipe.out.n} ${recipe.name}  ←  ${ins}`;
       row.appendChild(label);
       row.addEventListener('click', () => {
@@ -111,13 +118,11 @@ export class UI {
     });
   }
 
-  setSlotBlock(slotIndex, blockId) {
-    this.slotBlocks[slotIndex] = blockId;
+  setSlotBlock(slotIndex, stackId) {
+    this.slotBlocks[slotIndex] = stackId;
     const slot = this.slots[slotIndex];
     const old = slot.querySelector('.icon');
-    const icon = this.atlas.iconCanvas(textureForFace(blockId, 'side'), 44);
-    icon.className = 'icon';
-    slot.replaceChild(icon, old);
+    slot.replaceChild(this._icon(stackId, 44), old);
   }
 
   selectSlot(i) {
@@ -147,16 +152,34 @@ export class UI {
     if (craftList) craftList.style.display = survival ? '' : 'none';
   }
 
-  // Update hotbar item counts (survival only).
-  updateCounts(getCount) {
+  // Hotbar counts + tool durability bars (survival only).
+  updateHotbar(getCount, getDurability) {
     this.counts.forEach((el, i) => {
+      const stackId = this.slotBlocks[i];
       if (!this.survival) {
         el.textContent = '';
+        this.durbars[i].style.display = 'none';
         return;
       }
-      const n = getCount(this.slotBlocks[i]);
+      const n = getCount(stackId);
       el.textContent = n > 0 ? String(n) : '0';
       el.style.color = n > 0 ? '#fff' : '#e06a6a';
+
+      const bar = this.durbars[i];
+      if (isTool(stackId) && n > 0) {
+        const d = getDurability(stackId);
+        const max = itemDef(stackId).durability;
+        if (d < max) {
+          const frac = Math.max(0, d / max);
+          bar.style.display = 'block';
+          bar.style.width = Math.round(frac * 100) + '%';
+          bar.style.background = `hsl(${Math.round(frac * 120)},80%,45%)`;
+        } else {
+          bar.style.display = 'none';
+        }
+      } else {
+        bar.style.display = 'none';
+      }
     });
   }
 
@@ -175,11 +198,10 @@ export class UI {
     for (let i = 0; i < 10; i++) {
       const x = i * (s + gap) + 1;
       const y = 1;
-      // empty backing
       pathFn(ctx, x, y, s);
       ctx.fillStyle = empty;
       ctx.fill();
-      const units = value - i * 2; // 2 = full, 1 = half
+      const units = value - i * 2;
       if (units <= 0) continue;
       if (units >= 2) {
         pathFn(ctx, x, y, s);
@@ -218,6 +240,7 @@ export class UI {
       lines.push(`Time: ${String(h).padStart(2, '0')}:${String(m).padStart(2, '0')}`);
     }
     if (info.mobs !== undefined) lines.push(`Mobs: ${info.mobs}`);
+    if (info.held) lines.push(`Held: ${info.held}`);
     if (info.looking) lines.push(`Targeted: ${info.looking}`);
     this.debugEl.textContent = lines.join('\n');
   }

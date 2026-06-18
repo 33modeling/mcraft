@@ -191,6 +191,8 @@
         border-color: #fff #5a5a5a #5a5a5a #fff;
         padding: 14px 16px 18px;
         color: #2b2b2b;
+        max-height: 88vh;
+        overflow-y: auto;
       }
       .inv-panel h2 {
         font-size: 16px;
@@ -253,6 +255,15 @@
         color: #fff;
         text-shadow: 1px 1px 0 #000;
       }
+      .slot .durbar {
+        position: absolute;
+        left: 4px;
+        bottom: 3px;
+        height: 3px;
+        width: 0;
+        display: none;
+        border-radius: 1px;
+      }
       #modehint {
         position: fixed;
         bottom: 70px;
@@ -271,6 +282,8 @@
         flex-direction: column;
         gap: 4px;
         max-width: 470px;
+        max-height: 260px;
+        overflow-y: auto;
       }
       .craft-recipe {
         display: flex;

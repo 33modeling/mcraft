@@ -1,12 +1,13 @@
-// Dropped item entities: small spinning block cubes that fall, settle, and are
-// collected when the player walks over them (survival mode).
+// Dropped entities: block drops render as little spinning cubes, item drops as
+// flat camera-facing sprites. The player walks over them to collect (survival).
 
 import * as THREE from 'three';
 import { textureForFace, isSolid } from './blocks.js';
+import { isItem, stackTexture } from './itemdefs.js';
 
 const FACES = ['side', 'side', '+y', '-y', 'side', 'side'];
 
-function makeItemGeometry(atlas, blockId) {
+function blockGeometry(atlas, blockId) {
   const geo = new THREE.BoxGeometry(0.28, 0.28, 0.28);
   const uv = geo.attributes.uv;
   for (let f = 0; f < 6; f++) {
@@ -21,24 +22,44 @@ function makeItemGeometry(atlas, blockId) {
   return geo;
 }
 
+function itemGeometry(atlas, stackId) {
+  const geo = new THREE.PlaneGeometry(0.4, 0.4);
+  const r = atlas.uvForName(stackTexture(stackId));
+  const uv = geo.attributes.uv;
+  uv.setXY(0, r.x0, r.y1);
+  uv.setXY(1, r.x1, r.y1);
+  uv.setXY(2, r.x0, r.y0);
+  uv.setXY(3, r.x1, r.y0);
+  uv.needsUpdate = true;
+  return geo;
+}
+
 export class DroppedItems {
-  constructor(scene, atlas, material, world) {
+  constructor(scene, atlas, world) {
     this.scene = scene;
     this.atlas = atlas;
-    this.material = material;
     this.world = world;
     this.items = [];
+    this.blockMat = new THREE.MeshBasicMaterial({ map: atlas.texture });
+    this.itemMat = new THREE.MeshBasicMaterial({
+      map: atlas.texture,
+      transparent: true,
+      alphaTest: 0.5,
+      side: THREE.DoubleSide,
+    });
   }
 
-  spawn(blockId, x, y, z) {
-    const geo = makeItemGeometry(this.atlas, blockId);
-    const mesh = new THREE.Mesh(geo, this.material);
+  spawn(stackId, x, y, z) {
+    const item = isItem(stackId);
+    const geo = item ? itemGeometry(this.atlas, stackId) : blockGeometry(this.atlas, stackId);
+    const mesh = new THREE.Mesh(geo, item ? this.itemMat : this.blockMat);
     mesh.position.set(x, y, z);
     this.scene.add(mesh);
     this.items.push({
       mesh,
       geo,
-      blockId,
+      stackId,
+      item,
       vel: new THREE.Vector3((Math.random() - 0.5) * 1.5, 2.0, (Math.random() - 0.5) * 1.5),
       age: 0,
     });
@@ -52,7 +73,7 @@ export class DroppedItems {
     this.items.length = 0;
   }
 
-  update(dt, player, onPickup) {
+  update(dt, player, camera, onPickup) {
     for (let i = this.items.length - 1; i >= 0; i--) {
       const it = this.items[i];
       it.age += dt;
@@ -71,22 +92,22 @@ export class DroppedItems {
         it.vel.y = 0;
       }
       p.y = ny;
-      it.mesh.rotation.y += dt * 1.6;
 
-      // Collect after a short delay so freshly-dropped items don't snap back.
+      if (it.item) it.mesh.quaternion.copy(camera.quaternion); // billboard sprites
+      else it.mesh.rotation.y += dt * 1.6;
+
       if (it.age > 0.5) {
         const dx = p.x - player.position.x;
         const dy = p.y - (player.position.y + 0.9);
         const dz = p.z - player.position.z;
         if (dx * dx + dy * dy + dz * dz < 1.7) {
-          onPickup(it.blockId);
+          onPickup(it.stackId);
           this.scene.remove(it.mesh);
           it.geo.dispose();
           this.items.splice(i, 1);
           continue;
         }
       }
-      // Despawn very old drops to avoid unbounded growth.
       if (it.age > 300) {
         this.scene.remove(it.mesh);
         it.geo.dispose();

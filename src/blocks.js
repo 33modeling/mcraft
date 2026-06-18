@@ -23,6 +23,7 @@ export const SNOW = 17;
 export const GLOWSTONE = 18;
 export const TORCH = 19;
 export const CACTUS = 20;
+export const FURNACE = 21;
 
 // `solid`: participates in collision and stops the player.
 // `opaque`: fully hides the neighbouring face behind it (face culling).
@@ -63,6 +64,7 @@ export const BLOCKS = {
   [GLOWSTONE]: block('Glowstone', { all: 'glowstone' }, { emission: 15 }),
   [TORCH]: block('Torch', { all: 'torch' }, { emission: 14 }),
   [CACTUS]: block('Cactus', { top: 'cactus_top', bottom: 'cactus_top', side: 'cactus_side' }),
+  [FURNACE]: block('Furnace', { top: 'furnace_top', bottom: 'furnace_top', side: 'furnace_front' }),
 };
 
 // Resolve the texture name for a given block id and face direction.
@@ -111,6 +113,7 @@ export const HARDNESS = {
   [GLOWSTONE]: 0.5,
   [TORCH]: 0.2,
   [CACTUS]: 0.5,
+  [FURNACE]: 3.5,
   [WATER]: Infinity,
   [BEDROCK]: Infinity,
 };
@@ -138,12 +141,7 @@ export function blockDrop(id) {
   }
 }
 
-// Minimal crafting: convert collected blocks into other blocks.
-export const RECIPES = [
-  { in: [{ id: OAK_LOG, n: 1 }], out: { id: OAK_PLANKS, n: 4 }, name: 'Oak Planks' },
-  { in: [{ id: SAND, n: 1 }], out: { id: GLASS, n: 1 }, name: 'Glass' },
-  { in: [{ id: COAL_ORE, n: 1 }, { id: OAK_PLANKS, n: 1 }], out: { id: TORCH, n: 4 }, name: 'Torch' },
-];
+// Crafting/smelting recipes live in itemdefs.js (they involve item ids too).
 
 export function isOpaque(id) {
   const def = BLOCKS[id];
@@ -175,6 +173,7 @@ export const INVENTORY = [
   CACTUS,
   TORCH,
   GLOWSTONE,
+  FURNACE,
   WATER,
   BEDROCK,
   COAL_ORE,

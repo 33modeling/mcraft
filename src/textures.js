@@ -4,6 +4,7 @@
 
 import * as THREE from 'three';
 import { allTextureNames } from './blocks.js';
+import { allItemTextureNames } from './itemdefs.js';
 import { mulberry32 } from './noise.js';
 
 const TILE = 16; // pixels per texture tile
@@ -288,10 +289,131 @@ const PAINTERS = {
       px(d, x, y, 120, 170, 90);
     }
   },
+  furnace_top(d, rand) {
+    PAINTERS.stone(d, rand);
+    for (let x = 4; x <= 11; x++) {
+      px(d, x, 4, 80, 80, 80);
+      px(d, x, 11, 80, 80, 80);
+    }
+    for (let y = 4; y <= 11; y++) {
+      px(d, 4, y, 80, 80, 80);
+      px(d, 11, y, 80, 80, 80);
+    }
+  },
+  furnace_front(d, rand) {
+    PAINTERS.cobblestone(d, rand);
+    // dark fire opening in the lower middle
+    for (let y = 8; y <= 13; y++) {
+      for (let x = 4; x <= 11; x++) {
+        const fire = y >= 11 && rand() < 0.5;
+        if (fire) px(d, x, y, 230, 140, 40);
+        else px(d, x, y, 28, 26, 24);
+      }
+    }
+  },
 };
 
+// ---- Item icons (transparent background, drawn by name) ----
+
+function rect(d, x0, y0, x1, y1, r, g, b, a = 255) {
+  for (let y = y0; y <= y1; y++) {
+    for (let x = x0; x <= x1; x++) {
+      if (x >= 0 && x < TILE && y >= 0 && y < TILE) px(d, x, y, r, g, b, a);
+    }
+  }
+}
+
+const TIER_COLOR = { wood: [156, 122, 74], stone: [140, 140, 140], iron: [225, 226, 232] };
+
+function drawTool(d, kind, tier) {
+  const c = TIER_COLOR[tier] || [180, 180, 180];
+  // wooden handle along the diagonal
+  for (let i = 0; i < 9; i++) {
+    const x = 4 + i;
+    const y = 13 - i;
+    rect(d, x, y, x + 1, y + 1, 110, 78, 44);
+  }
+  if (kind === 'pickaxe') {
+    rect(d, 8, 2, 13, 3, c[0], c[1], c[2]);
+    rect(d, 8, 2, 9, 4, c[0], c[1], c[2]);
+    rect(d, 12, 2, 13, 4, c[0], c[1], c[2]);
+  } else if (kind === 'axe') {
+    rect(d, 9, 2, 13, 6, c[0], c[1], c[2]);
+    rect(d, 8, 3, 9, 5, c[0], c[1], c[2]);
+  } else if (kind === 'shovel') {
+    rect(d, 10, 2, 13, 5, c[0], c[1], c[2]);
+  } else {
+    // sword: tier-coloured blade along the diagonal, with a guard
+    for (let i = 0; i < 9; i++) {
+      const x = 5 + i;
+      const y = 11 - i;
+      rect(d, x, y, x + 1, y + 1, c[0], c[1], c[2]);
+    }
+    rect(d, 3, 12, 6, 13, 90, 64, 38); // handle
+    rect(d, 4, 10, 7, 11, 70, 70, 70); // guard
+  }
+}
+
+function drawItem(name, d, rand) {
+  const key = name.slice(5); // strip 'item_'
+  const toolMatch = key.match(/^(wood|stone|iron)_(pickaxe|axe|shovel|sword)$/);
+  if (toolMatch) {
+    drawTool(d, toolMatch[2], toolMatch[1]);
+    return;
+  }
+  switch (key) {
+    case 'stick':
+      for (let i = 0; i < 9; i++) rect(d, 5 + i, 12 - i, 6 + i, 13 - i, 120, 84, 48);
+      break;
+    case 'coal':
+      rect(d, 4, 5, 11, 11, 36, 36, 36);
+      rect(d, 5, 4, 10, 5, 50, 50, 50);
+      break;
+    case 'iron_ingot':
+      rect(d, 4, 6, 11, 10, 214, 216, 222);
+      rect(d, 4, 6, 11, 6, 240, 242, 248);
+      break;
+    case 'leather':
+      rect(d, 4, 5, 11, 11, 150, 96, 56);
+      break;
+    case 'feather':
+      for (let i = 0; i < 10; i++) rect(d, 6 + Math.floor(i / 3), 3 + i, 9, 4 + i, 245, 245, 250);
+      break;
+    case 'bone':
+      rect(d, 6, 4, 9, 11, 236, 234, 220);
+      rect(d, 4, 3, 11, 4, 236, 234, 220);
+      rect(d, 4, 11, 11, 12, 236, 234, 220);
+      break;
+    case 'arrow':
+      for (let i = 0; i < 12; i++) rect(d, 7, 2 + i, 8, 3 + i, 180, 180, 185);
+      rect(d, 5, 2, 10, 3, 120, 120, 120);
+      break;
+    case 'apple':
+      rect(d, 4, 5, 11, 12, 196, 40, 40);
+      rect(d, 5, 4, 10, 5, 220, 60, 60);
+      rect(d, 8, 2, 9, 4, 90, 150, 60);
+      break;
+    case 'raw_beef':
+      rect(d, 4, 5, 11, 11, 214, 110, 120);
+      rect(d, 6, 6, 9, 9, 180, 80, 90);
+      break;
+    case 'cooked_beef':
+      rect(d, 4, 5, 11, 11, 130, 84, 50);
+      rect(d, 6, 6, 9, 9, 100, 62, 36);
+      break;
+    case 'raw_chicken':
+      rect(d, 4, 5, 11, 11, 226, 178, 170);
+      break;
+    case 'cooked_chicken':
+      rect(d, 4, 5, 11, 11, 186, 138, 86);
+      break;
+    default:
+      rect(d, 4, 4, 11, 11, 200, 80, 200); // missing-item magenta
+  }
+}
+
 export function buildTextureAtlas() {
-  const names = allTextureNames();
+  const names = [...allTextureNames(), ...allItemTextureNames()];
   const rows = Math.ceil(names.length / COLS);
   const W = COLS * TILE;
   const H = rows * TILE;
@@ -299,7 +421,7 @@ export function buildTextureAtlas() {
   const canvas = document.createElement('canvas');
   canvas.width = W;
   canvas.height = H;
-  const ctx = canvas.getContext('2d');
+  const ctx = canvas.getContext('2d', { willReadFrequently: true });
 
   const tiles = new Map(); // name -> { col, row }
   names.forEach((name, i) => {
@@ -311,6 +433,7 @@ export function buildTextureAtlas() {
     const painter = PAINTERS[name];
     const rand = mulberry32(seedFromName(name));
     if (painter) painter(img.data, rand);
+    else if (name.startsWith('item_')) drawItem(name, img.data, rand);
     else speckle(img.data, rand, [200, 80, 200], 20); // magenta = missing texture
     ctx.putImageData(img, col * TILE, row * TILE);
   });
