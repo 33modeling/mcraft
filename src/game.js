@@ -69,6 +69,7 @@ export class Game {
     this.atlas = buildTextureAtlas();
     this.crackTextures = buildCrackTextures();
     this.mesherPool = new MesherPool(this.atlas.uvRects, (r) => this._onMeshResult(r));
+    this._meshSeq = 0; // globally-unique id per enqueued mesh job
     this.mining = { active: false, key: null, progress: 0 };
     this._saveTimer = null;
     this.timeOfDay = 0.3; // 0 = midnight, 0.25 = sunrise, 0.5 = noon, 0.75 = sunset
@@ -267,6 +268,8 @@ export class Game {
     const b = hit.block;
     const id = this.world.getBlock(b.x, b.y, b.z);
     const sel = this.ui.getSelectedBlock();
+    // A broken (0-count) tool behaves like bare hands — no speed or harvest perk.
+    const tool = this.gameMode === 'survival' && isTool(sel) && (this.inv[sel] || 0) <= 0 ? AIR : sel;
     if (!isBreakable(id)) {
       this.crackMesh.visible = false;
       this.mining.progress = 0;
@@ -279,7 +282,7 @@ export class Game {
       this.mining.progress = 0;
     }
     this.mining.progress += dt;
-    const total = breakTime(id) / miningSpeed(sel, id);
+    const total = breakTime(id) / miningSpeed(tool, id);
     const stage = Math.min(9, Math.floor((this.mining.progress / total) * 10));
     this.crackMesh.visible = true;
     this.crackMesh.position.set(b.x + 0.5, b.y + 0.5, b.z + 0.5);
@@ -294,10 +297,10 @@ export class Game {
       this._playSound(0.16, 0.08);
       let dropId;
       if (id === OAK_LEAVES) dropId = Math.random() < 0.08 ? APPLE : AIR; // apples from leaves
-      else if (!canHarvest(sel, id)) dropId = AIR; // wrong/no tool: no drop
+      else if (!canHarvest(tool, id)) dropId = AIR; // wrong/no tool: no drop
       else dropId = dropFor(id);
       if (dropId !== AIR) this.drops.spawn(dropId, b.x + 0.5, b.y + 0.5, b.z + 0.5);
-      this._useTool(sel);
+      this._useTool(tool);
       this.mining.progress = 0;
       this.mining.key = null;
       this.crackMesh.visible = false;
@@ -307,6 +310,7 @@ export class Game {
 
   _useTool(stackId) {
     if (this.gameMode !== 'survival' || !isTool(stackId)) return;
+    if ((this.inv[stackId] || 0) <= 0) return; // don't drive a broken tool negative
     const max = itemDef(stackId).durability;
     let d = this.toolDur[stackId] !== undefined ? this.toolDur[stackId] : max;
     d -= 1;
@@ -816,7 +820,8 @@ export class Game {
       }
       chunk.dirty = false;
       chunk.meshing = true;
-      this.mesherPool.enqueue(chunkKey(chunk.cx, chunk.cz), chunk.cx, chunk.cz, neighbors);
+      chunk.meshId = ++this._meshSeq;
+      this.mesherPool.enqueue(chunkKey(chunk.cx, chunk.cz), chunk.cx, chunk.cz, neighbors, chunk.meshId);
     } else {
       const { opaque, transparent } = buildChunkGeometry(this.world, chunk, this.atlas);
       this._swapMesh(chunk, 'opaqueMesh', opaque, this.opaqueMat);
@@ -828,7 +833,12 @@ export class Game {
   _onMeshResult(data) {
     const chunk = this.world.chunks.get(data.key);
     if (!chunk) return; // chunk unloaded while the worker was meshing it
+    if (data.meshId !== chunk.meshId) return; // stale result for a re-enqueued/recreated chunk
     chunk.meshing = false;
+    if (data.error) {
+      chunk.dirty = true; // worker failed; unblock and retry on a later frame
+      return;
+    }
     this._swapMesh(chunk, 'opaqueMesh', arraysToGeometry(data.opaque), this.opaqueMat);
     this._swapMesh(chunk, 'transparentMesh', arraysToGeometry(data.transparent), this.transparentMat);
   }

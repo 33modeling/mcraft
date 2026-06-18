@@ -27,26 +27,31 @@ self.onmessage = (e) => {
   }
   if (msg.type !== 'mesh' || !uvRects) return;
 
-  const { key, cx, cz, neighbors } = msg;
-  const world = new World();
-  let center = null;
-  for (const n of neighbors) {
-    const c = world.ensureChunk(cx + n.dx, cz + n.dz);
-    c.blocks = n.blocks; // adopt the transferred/cloned array
-    c.generated = true;
-    if (n.dx === 0 && n.dz === 0) center = c;
-  }
-  if (!center) {
-    self.postMessage({ key, opaque: null, transparent: null });
-    return;
-  }
+  const { key, cx, cz, neighbors, meshId } = msg;
+  try {
+    const world = new World();
+    let center = null;
+    for (const n of neighbors) {
+      const c = world.ensureChunk(cx + n.dx, cz + n.dz);
+      c.blocks = n.blocks; // adopt the cloned array
+      c.generated = true;
+      if (n.dx === 0 && n.dz === 0) center = c;
+    }
+    if (!center) {
+      self.postMessage({ key, meshId, opaque: null, transparent: null });
+      return;
+    }
 
-  const { opaque, transparent } = buildChunkArrays(world, center, uvForName);
-  const o = pack(opaque);
-  const t = pack(transparent);
-  const transfer = [];
-  for (const p of [o, t]) {
-    if (p) transfer.push(p.positions.buffer, p.colors.buffer, p.uvs.buffer, p.lights.buffer, p.indices.buffer);
+    const { opaque, transparent } = buildChunkArrays(world, center, uvForName);
+    const o = pack(opaque);
+    const t = pack(transparent);
+    const transfer = [];
+    for (const p of [o, t]) {
+      if (p) transfer.push(p.positions.buffer, p.colors.buffer, p.uvs.buffer, p.lights.buffer, p.indices.buffer);
+    }
+    self.postMessage({ key, meshId, opaque: o, transparent: t }, transfer);
+  } catch (err) {
+    // Report failure so the main thread clears `meshing` and retries.
+    self.postMessage({ key, meshId, error: String((err && err.message) || err) });
   }
-  self.postMessage({ key, opaque: o, transparent: t }, transfer);
 };

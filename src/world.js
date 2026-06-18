@@ -19,6 +19,7 @@ export class Chunk {
     this.generated = false; // terrain has been filled
     this.dirty = true;       // mesh needs (re)building
     this.meshing = false;    // a worker mesh job is in flight
+    this.meshId = 0;         // generation id of the latest enqueued mesh job
     this.opaqueMesh = null;
     this.transparentMesh = null;
   }

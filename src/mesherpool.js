@@ -20,7 +20,7 @@ export class MesherPool {
   }
 
   // neighbors: [{ dx, dz, blocks: Uint8Array }] (copied via structured clone).
-  enqueue(key, cx, cz, neighbors) {
-    this.worker.postMessage({ type: 'mesh', key, cx, cz, neighbors });
+  enqueue(key, cx, cz, neighbors, meshId) {
+    this.worker.postMessage({ type: 'mesh', key, cx, cz, neighbors, meshId });
   }
 }
