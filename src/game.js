@@ -429,6 +429,7 @@ export class Game {
     this.alive = false;
     this.player.velocity.set(0, 0, 0);
     this._stopMining();
+    this.eating = false;
     if (document.pointerLockElement) document.exitPointerLock();
     const death = document.getElementById('death');
     if (death) death.classList.remove('hidden');
@@ -789,7 +790,10 @@ export class Game {
         this.inventoryOpen = false;
         this.ui.setInventoryOpen(false);
       }
-      if (!this.locked) this._stopMining();
+      if (!this.locked) {
+        this._stopMining();
+        this.eating = false; // hold-to-act state is invalid once the lock drops
+      }
       this._refreshOverlays();
     });
   }
@@ -878,7 +882,11 @@ export class Game {
     const pcx = floorDiv(this.player.position.x, CHUNK_SIZE);
     const pcz = floorDiv(this.player.position.z, CHUNK_SIZE);
     const R = RENDER_DISTANCE;
-    const genR = R + 1;
+    // Generate two rings beyond the mesh radius so that every *meshed* chunk has
+    // all 8 neighbours (including diagonals) available — the mesher's corner
+    // ambient-occlusion samples read diagonal chunks, so this avoids faint
+    // over-bright corners at the edge of the loaded region.
+    const genR = R + 2;
 
     const cands = [];
     for (let dx = -genR; dx <= genR; dx++) {
